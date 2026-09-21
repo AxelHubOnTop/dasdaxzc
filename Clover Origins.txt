@@ -1,0 +1,41 @@
+_G.Cooldown = 0.2
+_G.Damage_Multipier = 250 -- 50 - 500 (250 default)
+
+function attacknearest()
+for i2,v2 in pairs(game.Players.LocalPlayer.Character:GetChildren()) do
+if v2.ClassName == "Tool" then
+weapon_sedsa = v2.Name
+end
+end
+for i,v in pairs(workspace.Npcs:GetChildren()) do
+    if v:FindFirstChild("HumanoidRootPart") then
+    local dsi = (v.HumanoidRootPart.Position-game.Players.LocalPlayer.Character.HumanoidRootPart.Position).Magnitude
+    if dsi < 10 then
+        buklaa = _G.Damage_Multipier
+        talbe_shity = {}
+        for i231 = 1,buklaa do
+            table.insert(talbe_shity, v)
+        end
+local args = {
+    [1] = weapon_sedsa,
+    [2] = talbe_shity,
+    [3] = 1,
+    [4] = 0.12703428325254004,
+    [5] = 24.90179320000243
+}
+
+game:GetService("ReplicatedStorage"):WaitForChild("Rep_Core"):WaitForChild("Events"):WaitForChild("Combat"):FireServer(unpack(args))
+
+    end
+    end
+end
+end
+
+spawn(function()
+while task.wait() do
+pcall(function()
+task.wait(_G.Cooldown)
+attacknearest()
+end)
+end
+end)

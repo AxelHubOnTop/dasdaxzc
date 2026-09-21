@@ -1,0 +1,61 @@
+local placeid = game.PlaceId
+
+if placeid == 90738171169572 then
+
+repeat task.wait()
+        until game:IsLoaded()
+
+repeat task.wait()
+        until game:GetService("Players").LocalPlayer.PlayerGui:FindFirstChild("Loading")
+
+game.StarterGui:SetCore("SendNotification", {
+            Icon = "rbxassetid://86949082023913";
+            Title = "Axel Hub", 
+            Text = "Anime Tactical Simulator Has Been Executed!"
+        })
+
+if game:GetService("Players").LocalPlayer.PlayerGui:FindFirstChild("...") then
+game:GetService("Players").LocalPlayer.PlayerGui:FindFirstChild("..."):Destroy()
+end
+
+loadstring(game:HttpGet("https://raw.githubusercontent.com/AxelHubOnTop/LoaderSaver/refs/heads/main/ATS.Lua"))()
+
+elseif placeid == 111446873000464 then
+repeat task.wait()
+        until game:IsLoaded()
+
+repeat task.wait()
+        until game:GetService("Players").LocalPlayer.PlayerGui:FindFirstChild("UILoader")
+
+if Premiums then
+game.StarterGui:SetCore("SendNotification", {
+            Icon = "rbxassetid://86949082023913";
+            Title = "Axel Hub", 
+            Text = "Anime Rangers X (Premium) Has Been Executed!"
+        })
+
+if game:GetService("Players").LocalPlayer.PlayerGui:FindFirstChild("...") then
+game:GetService("Players").LocalPlayer.PlayerGui:FindFirstChild("..."):Destroy()
+end
+
+loadstring(game:HttpGet("https://raw.githubusercontent.com/ChalaRmmEIEI/sanlam/refs/heads/main/fewaf.lua"))()
+elseif Premiums == false then
+game.StarterGui:SetCore("SendNotification", {
+            Icon = "rbxassetid://86949082023913";
+            Title = "Axel Hub", 
+            Text = "Anime Rangers X (Free) Has Been Executed!"
+        })
+
+if game:GetService("Players").LocalPlayer.PlayerGui:FindFirstChild("...") then
+game:GetService("Players").LocalPlayer.PlayerGui:FindFirstChild("..."):Destroy()
+end
+
+loadstring(game:HttpGet("https://raw.githubusercontent.com/ChalaRmmEIEI/sanlam/refs/heads/main/vdsv.lua"))()
+end
+else
+game.StarterGui:SetCore("SendNotification", {
+            Icon = "rbxassetid://86949082023913";
+            Title = "Axel Hub", 
+            Text = "Game Not Support!"
+        })
+end

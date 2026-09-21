@@ -1,0 +1,20 @@
+pcall(function()
+    local player = game:GetService("Players").LocalPlayer
+    player.OnTeleport:Connect(function()
+        SaveSettings()
+        if queue_on_teleport then
+            pcall(function()
+                queue_on_teleport([[
+                    task.wait(1)
+                    local rawCode = ""
+                    pcall(function() rawCode = game:HttpGet("loadstringkeysystem") end)
+                    if rawCode ~= "" then
+                        loadstring(rawCode)()
+                    else
+                        pcall(function() loadstring(readfile("ASTD_MacroFolder/rex.lua"))() end)
+                    end
+                ]])
+            end)
+        end
+    end)
+end)

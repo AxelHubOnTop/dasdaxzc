@@ -1,0 +1,707 @@
+repeat task.wait()
+until game:IsLoaded()
+
+repeat task.wait()
+until game:GetService("ReplicatedStorage"):FindFirstChild("REFLEX_DEVTOOLS")
+
+if loaded ~= true then
+game.Players.LocalPlayer:Kick("Fuck You Dumbass")
+end
+
+local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
+local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/SaveManager.lua"))()
+local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/InterfaceManager.lua"))()
+
+local SAVE_PATH   = "AxelMacro/"
+local CFG_PATH    = "AxelMacro/settings.json"
+local Players     = game:GetService("Players")
+local RS          = game:GetService("ReplicatedStorage")
+local HS          = game:GetService("HttpService")
+local LocalPlayer = Players.LocalPlayer
+
+local CFG = {
+    PlayMode      = "servertime",
+    Join          = false,
+    MacroSelect   = "",
+    Operations    = "Story",
+    Stage         = "Ninja Leaf",
+    Difficulty    = "Normal",
+    ChallengeAct  = "ACT:// 001",
+    NormalAct     = "ACT:// 001",
+}
+
+local function saveSettings()
+    pcall(function()
+        ensureFolder()
+        writefile(CFG_PATH, HS:JSONEncode(CFG))
+    end)
+end
+
+local function loadSettings()
+    pcall(function()
+        if isfile(CFG_PATH) then
+            local decoded = HS:JSONDecode(readfile(CFG_PATH))
+            for k, v in pairs(decoded) do
+                CFG[k] = v
+            end
+        end
+    end)
+end
+
+local function tprint(tbl, indent)
+    indent = indent or 0
+    local out = string.rep(" ", indent) .. "{\r\n"
+    indent += 2
+    for k, v in pairs(tbl) do
+        out ..= string.rep(" ", indent)
+        out ..= (typeof(k) == "number") and ("[" .. k .. "] = ") or ('["' .. k .. '"] = ')
+        local t = typeof(v)
+        if t == "number" then
+            out ..= v .. ",\r\n"
+        elseif t == "string" then
+            out ..= string.format("%q", v) .. ",\r\n"
+        elseif t == "buffer" then
+            local escaped = buffer.tostring(v):gsub(".", function(c)
+                return string.format("\\%03d", string.byte(c))
+            end)
+            out ..= 'buffer.fromstring("' .. escaped .. '"),\r\n'
+        elseif t == "table" then
+            out ..= tprint(v, indent + 2) .. ",\r\n"
+        else
+            out ..= '"' .. tostring(v) .. '"' .. ",\r\n"
+        end
+    end
+    return out .. string.rep(" ", indent - 2) .. "}"
+end
+
+local function ensureFolder()
+    if not isfolder(SAVE_PATH) then makefolder(SAVE_PATH) end
+end
+
+loadSettings()
+
+local function listSavedFiles()
+    ensureFolder()
+    local result = {}
+    for _, f in ipairs(listfiles(SAVE_PATH)) do
+        local name = f:match("([^/\\]+)%.lua$")
+        if name then table.insert(result, name) end
+    end
+    return result
+end
+
+local function getSessionTime()
+    local ok, txt = pcall(function()
+        return LocalPlayer.PlayerGui.sessionStats.mainFrame.left.base.content
+            .totalBase.list.sessionTime.amountBase.amount.Text
+    end)
+    return ok and txt or nil
+end
+
+local function timeStrToSecs(str)
+    if not str then return nil end
+    local m, s = str:match("(%d+):(%d+)")
+    return (m and s) and (tonumber(m) * 60 + tonumber(s)) or nil
+end
+
+local function splitPath(path)
+    local parts = {}
+    for seg in path:gmatch("[^%.]+") do table.insert(parts, seg) end
+    return parts
+end
+
+local function resolveRemote(path)
+    local r = game
+    for _, seg in ipairs(splitPath(path)) do
+        local nxt = r:FindFirstChild(seg)
+        if not nxt then
+            local ok, val = pcall(function() return r[seg] end)
+            if ok and val then nxt = val else return nil end
+        end
+        r = nxt
+    end
+    return r
+end
+
+local function readStrBuf(buf, offset, len)
+    local s = ""
+    for i = offset, offset + len - 1 do
+        s ..= string.char(buffer.readu8(buf, i))
+    end
+    return s
+end
+
+local function getTowerIdFromBuffer(buf)
+    local len = buffer.readu8(buf, 2)
+    return readStrBuf(buf, 4, len)
+end
+
+local function replaceIdInBuffer(buf, newId)
+    local size   = buffer.len(buf)
+    local newBuf = buffer.create(size)
+    for i = 0, size - 1 do buffer.writeu8(newBuf, i, buffer.readu8(buf, i)) end
+    buffer.writeu8(newBuf, 2, #newId)
+    for i = 1, #newId do buffer.writeu8(newBuf, 3 + i, string.byte(newId, i)) end
+    return newBuf
+end
+
+local function snapshotTowers()
+    local ids, container = {}, workspace:FindFirstChild("placedTowers")
+    if container then
+        for _, v in ipairs(container:GetChildren()) do ids[v.Name] = true end
+    end
+    return ids
+end
+
+local function waitForNewTower(before, timeout)
+    local waited, container = 0, workspace:FindFirstChild("placedTowers")
+    if not container then return nil end
+    repeat
+        task.wait(0.05); waited += 0.05
+        for _, v in ipairs(container:GetChildren()) do
+            if not before[v.Name] then return v.Name end
+        end
+    until waited >= timeout
+    return nil
+end
+
+local RecordTable     = {}
+local hookActive      = false
+local currentFileName = ""
+
+local gg  = getrawmetatable(game)
+local old = gg.__namecall
+setreadonly(gg, false)
+gg.__namecall = newcclosure(function(self, ...) return old(self, ...) end)
+setreadonly(gg, true)
+
+local function saveToFile()
+    if currentFileName == "" then return end
+    writefile(
+        SAVE_PATH .. currentFileName .. ".lua",
+        "local Macro = function()\n  return " .. tprint(RecordTable) .. "\nend\nreturn Macro()"
+    )
+end
+
+local function ToggleRecord(fileName)
+    ensureFolder()
+    RecordTable, currentFileName, hookActive = {}, fileName, false
+    setreadonly(gg, false)
+    gg.__namecall = newcclosure(function(self, ...)
+        local method  = getnamecallmethod()
+        local results = table.pack(old(self, ...))
+        if not hookActive and (method == "FireServer" or method == "InvokeServer") then
+            hookActive = true
+            local s, a, t = self, { ... }, tick()
+            task.defer(function()
+                pcall(function()
+                    local cls = s.ClassName
+                    if (method == "FireServer" and cls == "RemoteEvent") or
+                       (method == "InvokeServer" and cls == "RemoteFunction") then
+                        table.insert(RecordTable, {
+                            type        = cls == "RemoteEvent" and "RemoteEvent" or "RemoteFunction",
+                            path        = s:GetFullName(),
+                            args        = a,
+                            time        = t,
+                            sessionTime = getSessionTime(),
+                            serverTime  = workspace.DistributedGameTime,
+                        })
+                    end
+                end)
+                hookActive = false
+            end)
+        end
+        return table.unpack(results, 1, results.n)
+    end)
+    setreadonly(gg, true)
+end
+
+local function StopRecord()
+    setreadonly(gg, false)
+    gg.__namecall = newcclosure(function(self, ...) return old(self, ...) end)
+    setreadonly(gg, true)
+    task.defer(function()
+        task.wait(0.2)
+        if #RecordTable > 0 then saveToFile() end
+        currentFileName, hookActive = "", false
+    end)
+end
+
+local towerIdMap          = {}
+local playThread          = nil
+local playStartServerTime = 0
+local firstServerTime     = 0
+
+local function StopPlay()
+    if playThread then pcall(task.cancel, playThread); playThread = nil end
+    pcall(function()
+        if Fluent.Options and Fluent.Options.PlayToggle then
+            Fluent.Options.PlayToggle:SetValue(false)
+        end
+    end)
+end
+
+local function waitUntilSessionTime(targetSecs, timeout)
+    local waited = 0
+    repeat
+        task.wait(0.1); waited += 0.1
+        local cur = timeStrToSecs(getSessionTime())
+        if cur and cur >= targetSecs then return true end
+    until waited >= (timeout or 60)
+    return false
+end
+
+local function firePlace(remote, args, timeout)
+    local before = snapshotTowers()
+    remote:FireServer(table.unpack(args or {}))
+    return waitForNewTower(before, timeout or 8)
+end
+
+local function fireTower(remote, args, oldId, timeout)
+    local newId = towerIdMap[oldId]
+    if not newId then
+        local waited = 0
+        repeat task.wait(0.05); waited += 0.05
+        until towerIdMap[oldId] or waited >= (timeout or 5)
+        newId = towerIdMap[oldId]
+    end
+    if newId then
+        remote:FireServer(replaceIdInBuffer(args[1], newId), args[2])
+        return true
+    end
+    return false
+end
+
+pcall(function()
+    LocalPlayer.PlayerGui.hotbarGui.scalingFrame.currencyDisplay
+        .startGame.MouseButton1Click:Connect(function()
+        playStartServerTime = workspace.DistributedGameTime
+        firstServerTime     = 0
+        Fluent:Notify({ Title = "Server Time Reset", Content = "playStartServerTime = " .. playStartServerTime, Duration = 2 })
+    end)
+end)
+
+local function Plays(fileName, mode)
+    towerIdMap = {}
+    local path = SAVE_PATH .. fileName .. ".lua"
+    if not isfile(path) then
+        Fluent:Notify({ Title = "Load Failed", Content = "ไม่พบไฟล์ '" .. fileName .. "' ใน " .. SAVE_PATH, Duration = 4 })
+        StopPlay(); return
+    end
+    local ok, macroFn = pcall(loadfile, path)
+    if not ok or not macroFn then
+        Fluent:Notify({ Title = "Parse Error", Content = "โหลด '" .. fileName .. "' ล้มเหลว ไฟล์อาจเสียหาย", Duration = 4 })
+        StopPlay(); return
+    end
+    local Macro = macroFn()
+    if type(Macro) ~= "table" or #Macro == 0 then
+        Fluent:Notify({ Title = "Empty Macro", Content = "'" .. fileName .. "' ไม่มี events บันทึกไว้", Duration = 4 })
+        StopPlay(); return
+    end
+
+    Fluent:Notify({
+        Title   = "Macro Started",
+        Content = ("'%s' — %d events | mode: %s"):format(fileName, #Macro, mode),
+        Duration = 4,
+    })
+
+    playThread = task.spawn(function()
+        local firstSessSec = timeStrToSecs(Macro[1].sessionTime) or 0
+        playStartServerTime = workspace.DistributedGameTime
+        firstServerTime     = Macro[1].serverTime or 0
+
+        for i, v in ipairs(Macro) do
+            if mode == "time" then
+                local targetSec = timeStrToSecs(v.sessionTime)
+                if targetSec then
+                    waitUntilSessionTime(firstSessSec + (targetSec - firstSessSec), 120)
+                end
+            elseif mode == "servertime" then
+                local offset = (v.serverTime or firstServerTime) - firstServerTime
+                local target = playStartServerTime + offset
+                while workspace.DistributedGameTime < target do task.wait(0.05) end
+            end
+
+            local remote = resolveRemote(v.path)
+            if not remote then
+                warn(("[Macro] #%d ไม่พบ remote: %s"):format(i, tostring(v.path)))
+                continue
+            end
+
+            local success  = false
+            local maxRetry = (mode == "index") and 60 or 1
+
+            for attempt = 1, maxRetry do
+                pcall(function()
+                    if v.path:find("sync_RELIABLE") then
+                        local buf    = v.args and v.args[1]
+                        local opcode = buf and buffer.readu8(buf, 0)
+                        if opcode == 1 then
+                            local newId = firePlace(remote, v.args, 8)
+                            if newId then
+                                for _, nv in ipairs(Macro) do
+                                    if nv.path:find("towers_RELIABLE") and nv.args and nv.args[1] then
+                                        local oldId = getTowerIdFromBuffer(nv.args[1])
+                                        if not towerIdMap[oldId] then
+                                            towerIdMap[oldId] = newId
+                                            break
+                                        end
+                                    end
+                                end
+                                success = true
+                            end
+                        else
+                            remote:FireServer(table.unpack(v.args or {}))
+                            success = true
+                        end
+                    elseif v.path:find("towers_RELIABLE") then
+                        local oldId = getTowerIdFromBuffer(v.args[1])
+                        success = fireTower(remote, v.args, oldId, 5)
+                        if not success then
+                            warn(("[Macro] #%d ไม่พบ ID map สำหรับ %s"):format(i, oldId))
+                        end
+                    else
+                        if v.type == "RemoteEvent" then
+                            remote:FireServer(table.unpack(v.args or {}))
+                        elseif v.type == "RemoteFunction" then
+                            remote:InvokeServer(table.unpack(v.args or {}))
+                        end
+                        success = true
+                    end
+                end)
+
+                if success then break end
+                if mode == "index" then
+                    task.wait(1)
+                    if attempt % 10 == 0 then
+                        Fluent:Notify({
+                            Title   = "Retrying Event",
+                            Content = ("Event #%d รอ retry %d/60 ครั้ง"):format(i, attempt),
+                            Duration = 2,
+                        })
+                    end
+                end
+            end
+
+            if not success and mode == "index" then
+                Fluent:Notify({
+                    Title   = "Event Failed",
+                    Content = ("Event #%d ล้มเหลวหลังครบ 60 retry"):format(i),
+                    Duration = 4,
+                })
+            end
+        end
+
+        Fluent:Notify({ Title = "Macro Done", Content = ("'%s' เล่นครบทั้ง %d events แล้ว"):format(fileName, #Macro), Duration = 5 })
+        StopPlay()
+    end)
+end
+
+local RemoteJoinTable = {
+    ["Create Match"]    = { path = "ReplicatedStorage.rooms.rooms_RELIABLE", args = { buffer.fromstring("\b\001\001"), {} } },
+    ["Nightmare"]       = { path = "ReplicatedStorage.rooms.rooms_RELIABLE", args = { buffer.fromstring("\004\005\006\000normal"), {} } },
+    ["Normal"]          = { path = "ReplicatedStorage.rooms.rooms_RELIABLE", args = { buffer.fromstring("\004\004\t\000nightmare"), {} } },
+    ["Ninja Leaf"]      = { path = "ReplicatedStorage.rooms.rooms_RELIABLE", args = { buffer.fromstring("\003\a\t\000ninjaLeaf"), {} } },
+    ["Marine Fortress"] = { path = "ReplicatedStorage.rooms.rooms_RELIABLE", args = { buffer.fromstring("\003\b\014\000marineFortress"), {} } },
+    ["Namok"]           = { path = "ReplicatedStorage.rooms.rooms_RELIABLE", args = { buffer.fromstring("\003\t\005\000namok"), {} } },
+    ["Sky Island"]      = { path = "ReplicatedStorage.rooms.rooms_RELIABLE", args = { buffer.fromstring("\003\n\t\000skyIsland"), {} } },
+    ["Cursed Arena"]    = { path = "ReplicatedStorage.rooms.rooms_RELIABLE", args = { buffer.fromstring("\003\003\v\000cursedArena"), {} } },
+    ["Challenge"]       = { path = "ReplicatedStorage.rooms.rooms_RELIABLE", args = { buffer.fromstring("\004\004\a\000legends"), {} } },
+    ["Story"]           = { path = "ReplicatedStorage.rooms.rooms_RELIABLE", args = { buffer.fromstring("\004\002\006\000normal"), {} } },
+    ["CreateFinal"]     = { path = "ReplicatedStorage.rooms.rooms_RELIABLE", args = { buffer.fromstring("\001\005\001"), {} } },
+}
+
+local function UseRemoteJoin(action)
+    local entry = RemoteJoinTable[action]
+    if entry then resolveRemote(entry.path):FireServer(unpack(entry.args)) end
+end
+
+local function selectAct(actStr, optStr)
+    local buffercreate = buffer.create(3)
+    buffer.writeu8(buffercreate, 0, 2)
+    buffer.writeu8(buffercreate, 1, 17)
+    buffer.writeu8(buffercreate, 2, tonumber(string.match(optStr, "%d+")) or 1)
+    RS:WaitForChild("rooms"):WaitForChild("rooms_RELIABLE"):FireServer(
+        buffer.fromstring(buffer.tostring(buffercreate)), {}
+    )
+end
+
+local Window = Fluent:CreateWindow({
+    Title       = "Axel Hub",
+    SubTitle    = "The success of the project was credited by KANIX.",
+    TabWidth    = 160,
+    Size        = UDim2.fromOffset(580, 480),
+    Acrylic     = false,
+    Theme       = "Dark",
+    MinimizeKey = Enum.KeyCode.RightControl,
+})
+
+local Tabs = {
+    Recorder = Window:AddTab({ Title = "Recorder", Icon = "circle"   }),
+    Macros   = Window:AddTab({ Title = "Macros",   Icon = "play"     }),
+    Join     = Window:AddTab({ Title = "Join",     Icon = "log-in"   }),
+    Settings = Window:AddTab({ Title = "Settings", Icon = "settings" }),
+}
+
+local Options = Fluent.Options
+
+-- ========== TAB: RECORDER ==========
+
+do
+    Tabs.Recorder:AddParagraph({
+        Title   = "How to use",
+        Content = "1. ตั้งชื่อ session\n2. เปิด Record แล้วเล่นเกมตามปกติ\n3. ปิด Record — ไฟล์จะถูกบันทึกอัตโนมัติ\n4. ไปที่ Macros เพื่อเล่นหรือลบ",
+    })
+
+    Tabs.Recorder:AddInput("SessionName", {
+        Title       = "Session Name",
+        Description = "ชื่อไฟล์ที่จะบันทึก รองรับ a-z 0-9 _ -",
+        Placeholder = "e.g. farm_loop",
+        Default     = "",
+        Numeric     = false,
+        Finished    = false,
+        Callback    = function() end,
+    })
+
+    local RecordToggle = Tabs.Recorder:AddToggle("RecordToggle", {
+        Title       = "Record",
+        Description = "เปิดเพื่อเริ่มบันทึก FireServer / InvokeServer ทุกตัวที่ถูกเรียก ปิดเพื่อหยุดและบันทึกไฟล์",
+        Default     = false,
+    })
+
+    RecordToggle:OnChanged(function()
+        if Options.RecordToggle.Value then
+            local name = (Options.SessionName and Options.SessionName.Value ~= "")
+                and Options.SessionName.Value:gsub("[^%w_%-]", "")
+                or  ("session_" .. os.time())
+            ToggleRecord(name)
+            Fluent:Notify({
+                Title    = "Recording Started",
+                Content  = "กำลังบันทึกไปยัง '" .. name .. ".lua' เล่นเกมได้เลย",
+                Duration = 4,
+            })
+        else
+            local count = #RecordTable
+            StopRecord()
+            Fluent:Notify({
+                Title    = "Recording Stopped",
+                Content  = ("บันทึกสำเร็จ %d events — ไปที่ Macros แล้วกด Refresh"):format(count),
+                Duration = 5,
+            })
+        end
+    end)
+end
+
+-- ========== TAB: MACROS ==========
+
+do
+    Tabs.Macros:AddDropdown("PlayMode", {
+        Title       = "Play Mode",
+        Description = "servertime: sync ตาม DistributedGameTime (แนะนำ) | time: sync ตาม session timer | index: ยิงทันทีไม่ delay (retry อัตโนมัติ)",
+        Values      = { "servertime", "time", "index" },
+        Multi       = false,
+        Default     = CFG.PlayMode,
+        Callback    = function(v) CFG.PlayMode = v; saveSettings() end,
+    })
+
+    Tabs.Macros:AddButton({
+        Title       = "Refresh List",
+        Description = "โหลดรายชื่อไฟล์ macro ใหม่จาก disk (กดหลัง Record เสร็จ)",
+        Callback    = function()
+            local files = listSavedFiles()
+            local list  = #files > 0 and files or { "(none)" }
+            Options.MacroSelect:SetValues(list)
+            Options.MacroSelect:SetValue(list[1])
+            Fluent:Notify({
+                Title   = "List Refreshed",
+                Content = ("พบ %d macro(s) ใน %s"):format(#files, SAVE_PATH),
+                Duration = 3,
+            })
+        end,
+    })
+
+    local initFiles = listSavedFiles()
+    Tabs.Macros:AddDropdown("MacroSelect", {
+        Title       = "Macro File",
+        Description = "เลือก macro ที่ต้องการ Play หรือ Delete",
+        Values      = #initFiles > 0 and initFiles or { "(none)" },
+        Multi       = false,
+        Default     = CFG.MacroSelect ~= "" and CFG.MacroSelect or 1,
+        Callback    = function(v) CFG.MacroSelect = v; saveSettings() end,
+    })
+
+    local PlayToggle = Tabs.Macros:AddToggle("PlayToggle", {
+        Title       = "Play Macro",
+        Description = "เปิดเพื่อเริ่ม replay macro ที่เลือก ปิดเพื่อหยุดกลางคัน",
+        Default     = false,
+    })
+
+    PlayToggle:OnChanged(function()
+        if Options.PlayToggle.Value then
+            local selected = Options.MacroSelect and Options.MacroSelect.Value
+            if not selected or selected == "(none)" then
+                Fluent:Notify({ Title = "No Macro Selected", Content = "เลือก macro จาก dropdown ก่อนกด Play", Duration = 3 })
+                pcall(function() Options.PlayToggle:SetValue(false) end)
+                return
+            end
+            local mode = (Options.PlayMode and Options.PlayMode.Value) or "servertime"
+            Plays(selected, mode)
+        else
+            StopPlay()
+            Fluent:Notify({ Title = "Macro Stopped", Content = "หยุด macro กลางคัน", Duration = 3 })
+        end
+    end)
+
+    Tabs.Macros:AddButton({
+        Title       = "Delete Macro",
+        Description = "ลบไฟล์ macro ที่เลือกออกจาก disk ถาวร (มีหน้าต่างยืนยัน)",
+        Callback    = function()
+            local selected = Options.MacroSelect and Options.MacroSelect.Value
+            if not selected or selected == "(none)" then
+                Fluent:Notify({ Title = "No Macro Selected", Content = "เลือก macro ที่ต้องการลบก่อน", Duration = 3 })
+                return
+            end
+            Window:Dialog({
+                Title   = "Delete Macro",
+                Content = "ต้องการลบ '" .. selected .. "' ?\nไฟล์จะหายถาวรและไม่สามารถกู้คืนได้",
+                Buttons = {
+                    {
+                        Title    = "Delete",
+                        Callback = function()
+                            delfile(SAVE_PATH .. selected .. ".lua")
+                            local files = listSavedFiles()
+                            local list  = #files > 0 and files or { "(none)" }
+                            Options.MacroSelect:SetValues(list)
+                            Options.MacroSelect:SetValue(list[1])
+                            Fluent:Notify({ Title = "Deleted", Content = "'" .. selected .. "' ถูกลบออกจาก disk แล้ว", Duration = 4 })
+                        end,
+                    },
+                    { Title = "Cancel", Callback = function() end },
+                },
+            })
+        end,
+    })
+end
+
+-- ========== TAB: JOIN ==========
+
+do
+    Tabs.Join:AddDropdown("Operations", {
+        Title       = "Operation Mode",
+        Description = "เลือก mode ของ room ที่ต้องการ join",
+        Values      = { "Challenge", "Story" },
+        Multi       = false,
+        Default     = CFG.Operations,
+        Callback    = function(v) CFG.Operations = v; saveSettings() end,
+    })
+
+    Tabs.Join:AddDropdown("Stage", {
+        Title       = "Stage",
+        Description = "เลือก map ที่ต้องการเล่น",
+        Values      = { "Ninja Leaf", "Marine Fortress", "Namok", "Sky Island", "Cursed Arena" },
+        Multi       = false,
+        Default     = CFG.Stage,
+        Callback    = function(v) CFG.Stage = v; saveSettings() end,
+    })
+
+    Tabs.Join:AddDropdown("Difficulty", {
+        Title       = "Difficulty (Story)",
+        Description = "เลือกความยากสำหรับ Story mode",
+        Values      = { "Normal", "Nightmare" },
+        Multi       = false,
+        Default     = CFG.Difficulty,
+        Callback    = function(v) CFG.Difficulty = v; saveSettings() end,
+    })
+
+    Tabs.Join:AddSection("Challenge")
+
+    Tabs.Join:AddDropdown("ChallengeAct", {
+        Title       = "Act (Challenge)",
+        Description = "เลือก act ที่ต้องการใน Challenge mode",
+        Values      = { "ACT:// 001", "ACT:// 002", "ACT:// 003" },
+        Multi       = false,
+        Default     = CFG.ChallengeAct,
+        Callback    = function(v) CFG.ChallengeAct = v; saveSettings() end,
+    })
+
+    Tabs.Join:AddSection("Story")
+
+    Tabs.Join:AddDropdown("NormalAct", {
+        Title       = "Act (Story)",
+        Description = "เลือก act ที่ต้องการใน Story mode",
+        Values      = { "ACT:// 001", "ACT:// 002", "ACT:// 003", "ACT:// 004", "ACT:// 005", "ACT:// 006", "ACT:// 007" },
+        Multi       = false,
+        Default     = CFG.NormalAct,
+        Callback    = function(v) CFG.NormalAct = v; saveSettings() end,
+    })
+
+    Tabs.Join:AddToggle("Start", {
+        Title       = "Auto Join",
+        Description = "เปิดเพื่อให้ script เข้า room อัตโนมัติตามที่ตั้งค่าไว้ ปิดเพื่อหยุด",
+        Default     = CFG.Join,
+        Callback    = function(state) CFG.Join = state; saveSettings() end,
+    })
+
+    task.spawn(function()
+        while task.wait(1) do
+            if not CFG.Join then continue end
+            local RoomsUI = LocalPlayer.PlayerGui.RoomsUI
+            if not RoomsUI.Enabled then
+                for _, v in pairs(workspace.StoryDoor:GetChildren()) do
+                    LocalPlayer.Character.HumanoidRootPart.CFrame = v.Door.CFrame
+                end
+                continue
+            end
+            local gen   = RoomsUI.container.general
+            local final = RoomsUI.container.finalScreen
+            if not gen.Visible and not final.Visible then
+                UseRemoteJoin("Create Match"); continue
+            end
+            local titles = gen.content.leftSide.titlesHolder
+            local diff   = titles.difficultyText.Text
+            local map    = titles.mapName.Text
+            local act    = titles.actNumber.Text
+            if Options.Operations.Value == "Challenge" then
+                if not diff:find("Legends") then UseRemoteJoin("Challenge"); continue end
+                if not map:find(Options.Stage.Value) then UseRemoteJoin(Options.Stage.Value); continue end
+                if not act:find(Options.ChallengeAct.Value) then selectAct(act, Options.ChallengeAct.Value); continue end
+                if final.Visible then
+                    RS:WaitForChild("rooms"):WaitForChild("rooms_RELIABLE"):FireServer(buffer.fromstring("\005\n"), {})
+                else
+                    UseRemoteJoin("CreateFinal")
+                end
+            elseif Options.Operations.Value == "Story" then
+                if not diff:find("Normal") and not diff:find("Nightmare") then UseRemoteJoin("Story"); continue end
+                if not map:find(Options.Stage.Value) then UseRemoteJoin(Options.Stage.Value); continue end
+                if not act:find(Options.NormalAct.Value) then selectAct(act, Options.NormalAct.Value); continue end
+                if not diff:find(Options.Difficulty.Value) then UseRemoteJoin(Options.Difficulty.Value); continue end
+                if final.Visible then
+                    RS:WaitForChild("rooms"):WaitForChild("rooms_RELIABLE"):FireServer(buffer.fromstring("\005\n"), {})
+                else
+                    UseRemoteJoin("CreateFinal")
+                end
+            end
+        end
+    end)
+end
+
+-- ========== TAB: SETTINGS ==========
+
+SaveManager:SetLibrary(Fluent)
+InterfaceManager:SetLibrary(Fluent)
+SaveManager:IgnoreThemeSettings()
+SaveManager:SetIgnoreIndexes({})
+InterfaceManager:SetFolder("AxelMacro")
+SaveManager:SetFolder("AxelMacro/config")
+InterfaceManager:BuildInterfaceSection(Tabs.Settings)
+SaveManager:BuildConfigSection(Tabs.Settings)
+
+Window:SelectTab(1)
+
+Fluent:Notify({
+    Title    = "Remote Recorder Loaded",
+    Content  = "ไปที่ Recorder เพื่อเริ่มบันทึก หรือ Macros เพื่อเล่น macro ที่มีอยู่",
+    Duration = 6,
+})
+
+SaveManager:LoadAutoloadConfig()

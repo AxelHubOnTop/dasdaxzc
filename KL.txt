@@ -1,0 +1,1953 @@
+local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
+WindUI:SetNotificationLower(true)
+
+WindUI:AddTheme({
+    Name = "AxelDark",
+    Accent                       = Color3.fromHex("#1a0a2e"),
+    Background                   = Color3.fromHex("#0b0b14"),
+    BackgroundTransparency       = 0,
+    Outline                      = Color3.fromHex("#5b21b6"),
+    Text                         = Color3.fromHex("#ede9fe"),
+    Placeholder                  = Color3.fromHex("#6d28d9"),
+    Button                       = Color3.fromHex("#1e1b4b"),
+    Icon                         = Color3.fromHex("#8b5cf6"),
+    Hover                        = Color3.fromHex("#ede9fe"),
+    WindowBackground             = Color3.fromHex("#0b0b14"),
+    WindowShadow                 = Color3.fromHex("#000000"),
+    WindowTopbarButtonIcon       = Color3.fromHex("#8b5cf6"),
+    WindowTopbarTitle            = Color3.fromHex("#ede9fe"),
+    WindowTopbarAuthor           = Color3.fromHex("#a78bfa"),
+    WindowTopbarIcon             = Color3.fromHex("#c4b5fd"),
+    TabBackground                = Color3.fromHex("#1e1b4b"),
+    TabTitle                     = Color3.fromHex("#ede9fe"),
+    TabIcon                      = Color3.fromHex("#8b5cf6"),
+    ElementBackground            = Color3.fromHex("#13102a"),
+    ElementTitle                 = Color3.fromHex("#ede9fe"),
+    ElementDesc                  = Color3.fromHex("#a78bfa"),
+    ElementIcon                  = Color3.fromHex("#7c3aed"),
+    PopupBackground              = Color3.fromHex("#0f0d1f"),
+    PopupBackgroundTransparency  = 0,
+    PopupTitle                   = Color3.fromHex("#ede9fe"),
+    PopupContent                 = Color3.fromHex("#c4b5fd"),
+    PopupIcon                    = Color3.fromHex("#8b5cf6"),
+    DialogBackground             = Color3.fromHex("#0f0d1f"),
+    DialogBackgroundTransparency = 0,
+    DialogTitle                  = Color3.fromHex("#ede9fe"),
+    DialogContent                = Color3.fromHex("#c4b5fd"),
+    DialogIcon                   = Color3.fromHex("#8b5cf6"),
+    Toggle                       = Color3.fromHex("#1e1b4b"),
+    ToggleBar                    = Color3.fromHex("#7c3aed"),
+    Checkbox                     = Color3.fromHex("#1e1b4b"),
+    CheckboxIcon                 = Color3.fromHex("#a855f7"),
+    Slider                       = Color3.fromHex("#1e1b4b"),
+    SliderThumb                  = Color3.fromHex("#a855f7"),
+})
+WindUI:SetTheme("AxelDark")
+
+-- ==================== Config System ====================
+local HttpService        = game:GetService("HttpService")
+local MarketplaceService = game:GetService("MarketplaceService")
+local Options = {}
+
+local function GetConfigPath()
+    local mapName = "Unknown"
+    pcall(function() mapName = MarketplaceService:GetProductInfo(game.PlaceId).Name end)
+    mapName = mapName:gsub("[^%w%s]", ""):gsub("%s+", "")
+    return "AxelHub/" .. mapName .. ".json"
+end
+
+local lastSaveRequest = 0
+local function SaveConfig()
+    lastSaveRequest = tick()
+    local currentRequest = lastSaveRequest
+    task.delay(1, function()
+        if lastSaveRequest ~= currentRequest then return end
+        if not (writefile and makefolder) then return end
+        local path = GetConfigPath()
+        local folder = path:match("(.+)/")
+        if not isfolder(folder) then
+            local parts = folder:split("/")
+            local current = ""
+            for _, part in ipairs(parts) do
+                current = current .. part
+                if not isfolder(current) then makefolder(current) end
+                current = current .. "/"
+            end
+        end
+        writefile(path, HttpService:JSONEncode(Options))
+    end)
+end
+
+local function LoadConfig()
+    if not (readfile and isfile) then return end
+    local path = GetConfigPath()
+    if isfile(path) then
+        local ok, result = pcall(function() return HttpService:JSONDecode(readfile(path)) end)
+        if ok then
+            for k, v in pairs(result) do Options[k] = v end
+        end
+    end
+end
+
+LoadConfig()
+
+-- ==================== Services ====================
+local RS         = game:GetService("RunService")
+local Players    = game:GetService("Players")
+local RepStorage = game:GetService("ReplicatedStorage")
+
+local lp          = Players.LocalPlayer
+local Char        = lp.Character or lp.CharacterAdded:Wait()
+local Remotes     = RepStorage.Chest.Remotes.Functions
+local QuestRemote = Remotes.Quest
+local EtcRemote   = Remotes.EtcFunction
+local SkillRemote = Remotes.SkillAction
+local KenEvent    = Remotes.KenEvent
+
+local ArmamentRemote = RepStorage
+	:WaitForChild("Chest"):WaitForChild("Remotes"):WaitForChild("Events"):WaitForChild("Armament")
+
+local EntityProxy  = RepStorage.Chest.Assets.Modules.EntityClient.Proxy
+local QuestManager = require(RepStorage.Chest.Modules.QuestManager)
+
+local SKIP_QUESTS = {
+	["Find 3 Diamonds"]          = true,
+	["Find 1 Golden Key"]        = true,
+	["Lee"]                      = true,
+	["Kill 4 Beast Pirates"]     = true,
+	["Kill 1 The Ice King"]      = true,
+	["Kill 1 Lucidus"]           = true,
+	["Kill 1 The Crimson Demon"] = true,
+	["Kill 1 Dark Beard"]        = true,
+	["Back to Lee"]              = true,
+}
+
+-- ==================== Drop Map ====================
+local DROP_BOSS_MAP  = {}
+local MATERIAL_LIST  = {}
+local WEAPON_LIST    = {}
+local ACCESSORY_LIST = {}
+
+local MATERIAL_NAMES = {
+	["Carrot"]=true,["Rusted Scrap"]=true,["Gunpowder"]=true,["Fresh Fish"]=true,
+	["Angellic's Feather"]=true,["Leather"]=true,["Leather Scrap"]=true,["Thief's rag"]=true,
+	["Iron Ingot"]=true,["Lost Ruby"]=true,["Bread Crumbs"]=true,["Dragon's Orb"]=true,
+	["Pile of Bones"]=true,["Essence of Fire"]=true,["Lucidus's Totem"]=true,
+	["Samurai's Badage"]=true,["Dark Beard's Totem"]=true,["Undead's Ooze"]=true,
+	["Coral"]=true,["Pearl"]=true,["Sea Artifact"]=true,["Chronicles Lore"]=true,
+	["Fortune Tales"]=true,["Ethereal"]=true,["Shark's Fin"]=true,
+}
+local WEAPON_NAMES = {
+	["Gold Spear"]=true,["Demon Trident"]=true,["Barbaric Axe"]=true,["Shark Blade"]=true,
+	["Pole"]=true,["Tashi Blade"]=true,["Jitter"]=true,["Bisento"]=true,
+	["Metal Trident"]=true,["Authentic Mace"]=true,["Adventure Knife"]=true,
+	["Apollos"]=true,["Soul Cane"]=true,["Sunken Blade"]=true,["Anubis Axe"]=true,
+}
+local ACCESSORY_NAMES = {
+	["Shark's Canine"]=true,["Vampire's Vital fluid"]=true,["Twilight's Orb"]=true,
+	["Horned Hat"]=true,["Stainless Jaw"]=true,["Blue Scarf"]=true,
+	["Floffy Cloak"]=true,["Floffy Glasses"]=true,["Gazelle Mask"]=true,
+	["Hefty Coat"]=true,["Hefty Glasses"]=true,["Crimson Scarf"]=true,["Dominion Cloak"]=true,
+}
+
+pcall(function()
+	local frames = lp.PlayerGui.MainGui.StarterFrame.BossesHealthBar.Frames
+	for _, bossFrame in pairs(frames:GetChildren()) do
+		if not (bossFrame:IsA("Frame") or bossFrame:IsA("ScrollingFrame")) then continue end
+		local bossName = bossFrame.Name
+		local dropsList = bossFrame:FindFirstChild("HPFrame")
+			and bossFrame.HPFrame:FindFirstChild("Drops")
+			and bossFrame.HPFrame.Drops:FindFirstChild("DropsList")
+		if dropsList then
+			for _, drop in pairs(dropsList:GetChildren()) do
+				local name = drop.Name
+				if name == "UIListLayout" then continue end
+				DROP_BOSS_MAP[name] = bossName
+				if MATERIAL_NAMES[name] and not table.find(MATERIAL_LIST, name) then table.insert(MATERIAL_LIST, name)
+				elseif WEAPON_NAMES[name] and not table.find(WEAPON_LIST, name) then table.insert(WEAPON_LIST, name)
+				elseif ACCESSORY_NAMES[name] and not table.find(ACCESSORY_LIST, name) then table.insert(ACCESSORY_LIST, name) end
+			end
+		end
+	end
+end)
+
+local function mergeList(list, fallback)
+	for _, item in ipairs(fallback) do
+		if not table.find(list, item) then table.insert(list, item) end
+	end
+end
+
+mergeList(MATERIAL_LIST, {
+	"Rusted Scrap","Gunpowder","Fresh Fish","Angellic's Feather","Leather","Leather Scrap",
+	"Thief's rag","Carrot","Iron Ingot","Lost Ruby","Bread Crumbs","Dragon's Orb",
+	"Pile of Bones","Essence of Fire","Lucidus's Totem","Samurai's Badage",
+	"Dark Beard's Totem","Undead's Ooze","Coral","Pearl","Sea Artifact",
+	"Chronicles Lore","Fortune Tales","Ethereal","Shark's Fin"
+})
+mergeList(WEAPON_LIST, {
+	"Gold Spear","Demon Trident","Barbaric Axe","Shark Blade","Pole","Tashi Blade",
+	"Jitter","Bisento","Metal Trident","Authentic Mace","Adventure Knife",
+	"Apollos","Soul Cane","Sunken Blade","Anubis Axe"
+})
+mergeList(ACCESSORY_LIST, {
+	"Shark's Canine","Vampire's Vital fluid","Twilight's Orb","Horned Hat","Stainless Jaw",
+	"Blue Scarf","Floffy Cloak","Floffy Glasses","Gazelle Mask","Hefty Coat",
+	"Hefty Glasses","Crimson Scarf","Dominion Cloak"
+})
+
+local selectedMaterials   = {}
+local selectedWeapons     = {}
+local selectedAccessories = {}
+local swapWeaponList      = {}
+
+local function getActiveDrops()
+	local result = {}
+	for _, v in ipairs(selectedMaterials)   do table.insert(result, v) end
+	for _, v in ipairs(selectedWeapons)     do table.insert(result, v) end
+	for _, v in ipairs(selectedAccessories) do table.insert(result, v) end
+	return result
+end
+
+local SUMMON_BOSS_LIST = {
+	["Dark Beard [Lv. 3475]"] = {
+		SuccessQuest="Quest Accepted.",BossName="Dark Beard [Lv. 3475]",LevelNeed=3475,
+		QuestName="Kill 1 Dark Beard",MaterialNeed="Dark Beard's Totem",AI_Name="Dark Beard"
+	},
+	["The Ice King [Lv. 3350]"] = {
+		SuccessQuest="Quest Accepted.",BossName="The Ice King [Lv. 3350]",LevelNeed=3350,
+		QuestName="Kill 1 The Ice King",MaterialNeed="Lost Ruby",AI_Name="The Ice King"
+	},
+	["The Crimson Demon [Lv. 3375]"] = {
+		SuccessQuest="Quest Accepted.",BossName="The Crimson Demon [Lv. 3375]",LevelNeed=3375,
+		QuestName="Kill 1 The Crimson Demon",MaterialNeed="Dragon's Orb",AI_Name="The Crimson Demon"
+	},
+	["Lucidus [Lv. 3575]"] = {
+		SuccessQuest="Quest Accepted.",BossName="Lucidus [Lv. 3575]",LevelNeed=3575,
+		QuestName="Kill 1 Lucidus",MaterialNeed="Lucidus's Totem",AI_Name="Lucidus"
+	},
+}
+
+local summonBossNames = {}
+for name in pairs(SUMMON_BOSS_LIST) do table.insert(summonBossNames, name) end
+table.sort(summonBossNames)
+
+local selectedSummonBoss = Options.SelectedSummonBoss or summonBossNames[1]
+local autoSummonFarm     = Options.AutoSummonFarm or false
+local summonCooldown     = 0
+
+local seaKingRespawnConn = nil
+local seaKingLootDone    = false
+local isLootingSeaKing   = false
+
+-- ==================== State ====================
+local bossIndex = 1
+_G.Farm = false _G.Autoquest = false _G.AutoStat = false
+
+local state = {
+	autofarm   = false,
+	method     = Options.FarmMethod or "Behind",
+	behindDist = Options.Distance   or 3,
+	aboveDist  = Options.Distance   or 3,
+}
+
+local DungeonPos = nil
+if game.PlaceId == 4520749081 then
+	DungeonPos = CFrame.new(-4607.74316,33.0212288,-6009.00439,0.392487884,-4.69202099e-09,0.919757187,-6.35469917e-08,1,3.22187681e-08,-0.919757187,-7.10932753e-08,0.392487884)
+elseif game.PlaceId == 6381829480 then
+	DungeonPos = CFrame.new(-2426.29858,57.1957207,-1573.77197,0.940165997,-6.84548818e-09,-0.34071669,4.72137218e-09,1,-7.06338854e-09,0.34071669,5.03210762e-09,0.940165997)
+elseif game.PlaceId == 15759515082 then
+	DungeonPos = CFrame.new(10965.6133,132.810043,1245.18274,0.293659061,7.50188978e-09,0.955910206,-1.43401191e-09,1,-7.40736805e-09,-0.955910206,8.0445417e-10,0.293659061)
+end
+
+local autoBuso      = Options.AutoBuso    or false
+local autoKen       = Options.AutoKen     or false
+local busoActive    = false
+local kenActive     = false
+local autoDungeon   = false
+local JoinDungeon   = false
+local selectedBosses= {}
+local autoBossFarm  = false
+local autoSeaking   = false
+local autoGhostShip = false
+local autoDropFarm  = false
+local dropBossIndex = 1
+local autoFishing   = Options.AutoFishing or false
+local autoTreeFarm  = Options.AutoTreeFarm or false
+local treeIndex     = 0
+local allTrees      = {}
+local MON, FOLDER, QUEST_ARGS
+local WeaponDropdown
+local noclipConn       = nil
+local AttackCooldown   = 0
+local Entity_Position  = {}
+local autoSkillEnabled = Options.AutoSkill or false
+local skillCooldowns   = {}
+local skillKeys        = {"Z","X","C","V","F","E","B"}
+local selectedSkills   = {}
+
+-- ==================== BossList ====================
+local BossList     = {}
+local BossDropdown
+
+local function refreshBossList()
+	BossList = {}
+	local bossFolder = workspace:FindFirstChild("Monster") and workspace.Monster:FindFirstChild("Boss")
+	if bossFolder then
+		local seen = {} local bossLevel = {}
+		for _, qd in pairs(QuestManager) do
+			if type(qd) == "table" and qd.Mob then
+				local m, l = qd.Mob, qd.Level or 0
+				if not bossLevel[m] or l > bossLevel[m] then bossLevel[m] = l end
+			end
+		end
+		local tmp = {}
+		for _, mob in ipairs(bossFolder:GetChildren()) do
+			if mob:IsA("Model") and not seen[mob.Name] then
+				seen[mob.Name] = true
+				table.insert(tmp, {name=mob.Name, level=bossLevel[mob.Name] or 0})
+			end
+		end
+		table.sort(tmp, function(a, b) return a.level < b.level end)
+		for _, v in ipairs(tmp) do table.insert(BossList, v.name) end
+	end
+	if #BossList == 0 then BossList = {"(No Boss Found)"} end
+	if BossDropdown then BossDropdown.Values = BossList end
+end
+
+refreshBossList()
+
+-- ==================== Tree Farm ====================
+local function collectAllTrees()
+	allTrees = {}
+	local Island = workspace:FindFirstChild("Island")
+	if not Island then return end
+	local function searchTrees(parent)
+		for _, child in pairs(parent:GetChildren()) do
+			if (child.Name == "Tree" or child.Name == "Small Tree") and (child:IsA("Folder") or child:IsA("Model")) then
+				for _, tree in pairs(child:GetChildren()) do
+					if tree.Name == "Dead tree" then continue end
+					if tree:IsA("Model") then
+						local part = tree.PrimaryPart or tree:FindFirstChildWhichIsA("BasePart")
+						if part then table.insert(allTrees, part) end
+					end
+				end
+			end
+			if child:IsA("Folder") or child:IsA("Model") then searchTrees(child) end
+		end
+	end
+	searchTrees(Island)
+end
+
+-- ==================== Quest Functions ====================
+local function getQuestDataForLevel(level)
+	local bestQuest, bestLevel = nil, -1
+	for questName, questData in pairs(QuestManager) do
+		if type(questData) == "table" then
+			local questLevel = questData.Level or 0
+			local mob        = questData.Mob
+			if questData.DailyQuest then continue end
+			if SKIP_QUESTS[questName] then continue end
+			if mob and questLevel <= level and questLevel > bestLevel then
+				bestLevel = questLevel
+				bestQuest = {
+					questName = questName, mob = mob,
+					questArgs = {"take", questName},
+					amount    = questData.Ammount or questData.Amount or 1
+				}
+			end
+		end
+	end
+	return bestQuest
+end
+
+function checklevel()
+	local level = lp.PlayerStats.lvl.Value
+	local data  = getQuestDataForLevel(level)
+	if data then
+		MON        = data.mob
+		QUEST_ARGS = data.questArgs
+		FOLDER     = (data.amount == 1) and "Boss" or "Mon"
+	end
+end
+
+checklevel()
+
+local function abandonQuest()
+	pcall(function() EtcRemote:InvokeServer("CancelQuest", {}) end)
+end
+
+local function isQuestValidForLevel()
+	local currentQuest = lp.CurrentQuest.Value
+	if currentQuest == "" then return true end
+	local data = getQuestDataForLevel(lp.PlayerStats.lvl.Value)
+	if not data then return true end
+	return currentQuest == data.questName
+end
+
+-- ==================== Haki ====================
+local function enableBuso()
+	if busoActive then return end
+	pcall(function() ArmamentRemote:FireServer() busoActive = true end)
+end
+
+local function enableKen()
+	if kenActive then return end
+	pcall(function() Remotes.KenEvent:InvokeServer() kenActive = true end)
+end
+
+-- ==================== Weapon ====================
+local Weaponlist = {} local selectedWeapon = "" local AutoEquip = Options.AutoEquip or false
+
+local function refreshWeaponList()
+	local newList = {}
+	for _, v in pairs(lp.Backpack:GetChildren()) do
+		if v:IsA("Tool") then table.insert(newList, v.Name) end
+	end
+	local char = lp.Character
+	if char then
+		for _, v in pairs(char:GetChildren()) do
+			if v:IsA("Tool") then table.insert(newList, v.Name) end
+		end
+	end
+	if #newList == 0 then newList = {"None"} end
+	Weaponlist = newList
+	if Options.SelectedWeapon and table.find(Weaponlist, Options.SelectedWeapon) then
+		selectedWeapon = Options.SelectedWeapon
+	else
+		selectedWeapon = Weaponlist[1]
+	end
+	if WeaponDropdown then
+		WeaponDropdown.Values = Weaponlist
+		WeaponDropdown:Select(selectedWeapon)
+	end
+end
+
+local function getRodList()
+	local rods = {}
+	for _, v in pairs(Weaponlist) do
+		if string.find(string.lower(v), "rod") then table.insert(rods, v) end
+	end
+	return rods
+end
+
+refreshWeaponList()
+
+local function getPrefix()
+	if selectedWeapon == "None" or selectedWeapon == "" then return "FS" end
+	local tool = lp.Backpack:FindFirstChild(selectedWeapon) or (lp.Character and lp.Character:FindFirstChild(selectedWeapon))
+	if tool then
+		local customAnim = tool:GetAttribute("CustomAnim") or ""
+		if customAnim:find("Combat") then return "FS"
+		elseif customAnim == "" then return "DF"
+		else return "SW" end
+	end
+	return "SW"
+end
+
+local function gethit()
+	if selectedWeapon == "None" or selectedWeapon == "" then return "FS_None_M1" end
+	return getPrefix() .. "_" .. selectedWeapon .. "_M1"
+end
+
+local function getSkillName(key)
+	if selectedWeapon == "None" or selectedWeapon == "" then return "FS_None_" .. key end
+	return getPrefix() .. "_" .. selectedWeapon .. "_" .. key
+end
+
+local player    = game.Players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+local myRoot    = character:WaitForChild("HumanoidRootPart")
+
+local folder1 = workspace.Monster.Boss
+local folder2 = workspace.Monster.Mon
+local folder3 = workspace.MOB
+
+local function getNearestHRP()
+	local closest = nil
+	local shortestDistance = math.huge
+	local function checkFolder(folder)
+		for _, obj in pairs(folder:GetChildren()) do
+			if obj and obj:FindFirstChild("HumanoidRootPart") then
+				local hrp = obj:FindFirstChild("HumanoidRootPart")
+				if hrp then
+					local distance = (myRoot.Position - hrp.Position).Magnitude
+					if distance < shortestDistance then shortestDistance = distance closest = hrp end
+				end
+			end
+		end
+	end
+	checkFolder(folder1) checkFolder(folder2) checkFolder(folder3)
+	return closest
+end
+
+local function fireSkill(key)
+	task.spawn(function()
+		local nearestHRP
+		local h = getNearestHRP()
+		if h then nearestHRP = h.CFrame
+		else nearestHRP = lp.Character.HumanoidRootPart.CFrame end
+		pcall(function() SkillRemote:InvokeServer(getSkillName(key), {MouseHit=nearestHRP, Type="Up"}) end)
+		task.wait(0.05)
+		pcall(function() SkillRemote:InvokeServer(getSkillName(key), {MouseHit=nearestHRP, Type="Down"}) end)
+	end)
+end
+
+task.spawn(function()
+	while task.wait(0.05) do
+		if not autoSkillEnabled then continue end
+		if #selectedSkills == 0 then continue end
+		for _, key in ipairs(selectedSkills) do
+			local cd = skillCooldowns[key] or 0
+			if tick() >= cd then skillCooldowns[key] = tick() + 0.25 fireSkill(key) end
+		end
+	end
+end)
+
+task.spawn(function()
+	while task.wait(0.5) do
+		if not AutoEquip then continue end
+		pcall(function()
+			local char = lp.Character
+			if not char or selectedWeapon == "" then return end
+			local tool = lp.Backpack:FindFirstChild(selectedWeapon)
+			if tool then char.Humanoid:EquipTool(tool) end
+		end)
+	end
+end)
+
+local VirtualUser = game:GetService("VirtualUser")
+task.spawn(function()
+	while task.wait(300) do VirtualUser:CaptureController() VirtualUser:ClickButton2(Vector2.new()) end
+end)
+
+-- ==================== Noclip ====================
+local function setNoclip(on)
+	if on then
+		if noclipConn then return end
+		noclipConn = RS.Heartbeat:Connect(function()
+			local char = lp.Character
+			if not char then return end
+			for _, p in ipairs(char:GetDescendants()) do
+				if p:IsA("BasePart") then p.CanCollide = false end
+			end
+		end)
+	else
+		if noclipConn then noclipConn:Disconnect() noclipConn = nil end
+		local char = lp.Character
+		if not char then return end
+		for _, p in ipairs(char:GetDescendants()) do if p:IsA("BasePart") then p.CanCollide = true end end
+	end
+end
+
+local function enableAbove()
+	setNoclip(true)
+	pcall(function()
+		local char = lp.Character
+		if char and char:FindFirstChild("HumanoidRootPart") then
+			if not char.HumanoidRootPart:FindFirstChild("AntiFall") then
+				local bv = Instance.new("BodyVelocity")
+				bv.Name="AntiFall" bv.MaxForce=Vector3.new(9e9,9e9,9e9) bv.Velocity=Vector3.new(0,0,0) bv.Parent=char.HumanoidRootPart
+			end
+			if not char.HumanoidRootPart:FindFirstChild("AntiRotate") then
+				local bg = Instance.new("BodyGyro")
+				bg.Name="AntiRotate" bg.MaxTorque=Vector3.new(9e9,9e9,9e9) bg.P=100000 bg.D=100 bg.CFrame=char.HumanoidRootPart.CFrame bg.Parent=char.HumanoidRootPart
+			end
+		end
+	end)
+end
+
+local function disableAbove()
+	pcall(function()
+		local char = lp.Character
+		if not char then return end
+		local root = char:FindFirstChild("HumanoidRootPart")
+		if not root then return end
+		if root:FindFirstChild("AntiFall")   then root.AntiFall:Destroy()   end
+		if root:FindFirstChild("AntiRotate") then root.AntiRotate:Destroy() end
+		local ray = workspace:Raycast(root.Position, Vector3.new(0,-500,0), RaycastParams.new())
+		if ray then root.CFrame = CFrame.new(ray.Position + Vector3.new(0,3,0)) end
+	end)
+	task.wait(0.1)
+	setNoclip(false)
+end
+
+-- ==================== TP & Attack ====================
+local function tp(cf)
+	local char = lp.Character
+	if char and char:FindFirstChild("HumanoidRootPart") then
+		char.HumanoidRootPart.CFrame   = cf
+		char.HumanoidRootPart.Velocity = Vector3.new(0,0,0)
+		if char.HumanoidRootPart:FindFirstChild("AntiRotate") then
+			char.HumanoidRootPart.AntiRotate.CFrame = cf
+		end
+	end
+end
+
+local function attack(targetCFrame)
+	if tick() >= AttackCooldown then
+		AttackCooldown = tick() + 0.08
+		task.spawn(function()
+			pcall(function()
+				SkillRemote:InvokeServer(gethit(), {MouseHit=targetCFrame or CFrame.new(), Type="Up"})
+			end)
+		end)
+	end
+end
+
+local function getEntities(mobName, folder)
+	local found = {}
+	for _, mob in ipairs(folder:GetChildren()) do
+		local root = mob:FindFirstChild("HumanoidRootPart")
+		local hum  = mob:FindFirstChild("Humanoid")
+		if root then Entity_Position[mob.Name] = root.CFrame end
+		if mob.Name == mobName and hum and hum.Health > 0 then table.insert(found, mob) end
+	end
+	return found
+end
+
+local function farmBossByName(bossName)
+	local folder = workspace.Monster:FindFirstChild("Boss")
+	if not folder then return end
+	for _, mob in ipairs(folder:GetChildren()) do
+		if mob.Name == bossName then
+			local hum  = mob:FindFirstChildOfClass("Humanoid")
+			local root = mob:FindFirstChild("HumanoidRootPart")
+			if hum and root and hum.Health > 0 then
+				if state.method == "Above" then
+					tp(CFrame.lookAt(root.Position + Vector3.new(0,state.aboveDist,0), root.Position))
+				else
+					tp(root.CFrame * CFrame.new(0,0,state.behindDist))
+				end
+				attack(root.CFrame)
+				return true
+			end
+		end
+	end
+	return false
+end
+
+-- ==================== Sea King Respawn Watch ====================
+local seaKingRespawnConn = nil
+
+local function startSeaKingRespawnWatch()
+	if seaKingRespawnConn then return end
+	seaKingRespawnConn = lp.CharacterAdded:Connect(function()
+		if not autoSeaking then
+			seaKingRespawnConn:Disconnect()
+			seaKingRespawnConn = nil
+			return
+		end
+		if isLootingSeaKing then
+			isLootingSeaKing = false
+			seaKingLootDone  = false
+		end
+		task.wait(1.5)
+		pcall(function()
+			local bFolder = workspace.Monster:FindFirstChild("Boss")
+			if not bFolder then return end
+			local SEA_MOBS = {"Serpent", "Sea King"}
+			for _, mob in ipairs(bFolder:GetChildren()) do
+				for _, mobName in ipairs(SEA_MOBS) do
+					if mob.Name == mobName then
+						local root = mob:FindFirstChild("HumanoidRootPart")
+						if root then
+							tp(CFrame.new(root.Position + Vector3.new(0, 5, 0)))
+							WindUI:Notify({
+								Title   = "Sea King",
+								Content = "Respawned! Returning to "..mobName,
+								Icon    = "map-pin",
+								Duration = 3
+							})
+						end
+						return
+					end
+				end
+			end
+		end)
+	end)
+end
+
+local function stopSeaKingRespawnWatch()
+	if seaKingRespawnConn then
+		seaKingRespawnConn:Disconnect()
+		seaKingRespawnConn = nil
+	end
+	isLootingSeaKing = false
+	seaKingLootDone  = false
+end
+
+-- ==================== CharacterAdded ====================
+lp.CharacterAdded:Connect(function(c)
+	Char = c busoActive = false kenActive = false
+	task.wait(1)
+	if autoBuso then enableBuso() end
+	if autoKen  then enableKen()  end
+	if JoinDungeon and DungeonPos then task.wait(0.5) pcall(function() tp(DungeonPos) end) end
+	if (state.autofarm or autoBossFarm or autoDropFarm) and state.method == "Above" then enableAbove() end
+	if autoDungeon and state.method == "Above" then enableAbove() end
+end)
+
+-- ==================== Loop System ====================
+task.spawn(function()
+	while task.wait() do
+		pcall(function()
+			local myChar = lp.Character
+			if not myChar then return end
+
+			local function trySeaKing()
+	if not autoSeaking then
+		stopSeaKingRespawnWatch()
+		return false
+	end
+
+	startSeaKingRespawnWatch()
+
+	if isLootingSeaKing then return true end
+
+	local SEA_MOBS = {"Serpent", "Sea King"}
+	local targetMob = nil
+	local bFolder = workspace.Monster:FindFirstChild("Boss")
+	if bFolder then
+		for _, mob in ipairs(bFolder:GetChildren()) do
+			for _, mobName in ipairs(SEA_MOBS) do
+				if mob.Name == mobName then
+					local hum  = mob:FindFirstChildOfClass("Humanoid")
+					local root = mob:FindFirstChild("HumanoidRootPart")
+					if hum and root and hum.Health > 0 then
+						targetMob = mob
+						break
+					end
+				end
+			end
+			if targetMob then break end
+		end
+	end
+
+	if targetMob then
+		seaKingLootDone = false
+		local savedAutoSwap = autoSwapSkill
+		autoSwapSkill = false
+
+		local root = targetMob:FindFirstChild("HumanoidRootPart")
+		if root then
+			if state.method == "Above" then
+				tp(CFrame.lookAt(root.Position + Vector3.new(0, state.aboveDist, 0), root.Position))
+			else
+				tp(root.CFrame * CFrame.new(0, 0, state.behindDist))
+			end
+			attack(root.CFrame)
+		end
+
+		autoSwapSkill = savedAutoSwap
+		return true
+	end
+
+	if not seaKingLootDone and bFolder then
+		seaKingLootDone  = true
+		isLootingSeaKing = true
+
+		task.spawn(function()
+			WindUI:Notify({
+				Title   = "Sea King",
+				Content = "Collecting chests...",
+				Icon    = "package",
+				Duration = 3
+			})
+
+			for i = 1, 5 do
+				local chestName = "Chest" .. i
+				local chest     = workspace:FindFirstChild(chestName)
+				if chest then
+					local pos = nil
+					if chest:IsA("BasePart") then
+						pos = chest.Position
+					elseif chest:IsA("Model") then
+						local part = chest.PrimaryPart or chest:FindFirstChildWhichIsA("BasePart")
+						pos = part and part.Position or chest:GetModelCFrame().Position
+					end
+					if pos then
+						tp(CFrame.new(pos + Vector3.new(0, 2, 0)))
+						task.wait(0.6)
+					end
+				end
+			end
+
+			task.wait(0.3)
+
+			isLootingSeaKing = false
+		end)
+
+		return true
+	end
+
+	local whirlpool = nil
+	pcall(function()
+		local e = workspace:FindFirstChild("Effects")
+		if e then
+			whirlpool = e:FindFirstChild("SerpentWhirlpool")
+				or e:FindFirstChild("SeaKingWhirlpool")
+				or e:FindFirstChild("Whirlpool")
+		end
+	end)
+
+	if whirlpool then
+		local wPos = nil
+		pcall(function()
+			if whirlpool:IsA("BasePart") then
+				wPos = whirlpool.Position
+			elseif whirlpool:IsA("Model") then
+				wPos = whirlpool:GetModelCFrame().Position
+			end
+		end)
+		if wPos then
+			pcall(function() EtcRemote:InvokeServer("SwapWeapon") end)
+			task.wait(0.3)
+			tp(CFrame.new(wPos + Vector3.new(0, 10, 0)))
+			task.wait(0.2)
+			pcall(function()
+				local char = lp.Character
+				local tool = char and char:FindFirstChildOfClass("Tool")
+				if tool then
+					SkillRemote:InvokeServer("SW_"..tool.Name.."_M1", {Charge=100})
+				end
+			end)
+			task.wait(2.5)
+		end
+		return true
+	end
+
+	return false
+end
+			-- ==================== Ghost Ship  ====================
+			local ghostShipLootDone = false
+local isLootingGhostShip = false
+
+local function tryGhostShip()
+    if not autoGhostShip then return false end
+
+    if isLootingGhostShip then return true end
+
+    local targetMob = nil
+    local ghostRoot = workspace:FindFirstChild("GhostMonster")
+    if ghostRoot then
+        for _, obj in ipairs(ghostRoot:GetDescendants()) do
+            if obj:IsA("Model") then
+                local hum  = obj:FindFirstChildOfClass("Humanoid")
+                local root = obj:FindFirstChild("HumanoidRootPart")
+                if hum and root and hum.Health > 0 then
+                    targetMob = obj
+                    break
+                end
+            end
+        end
+    end
+
+    if targetMob then
+        ghostShipLootDone = false 
+        local root = targetMob:FindFirstChild("HumanoidRootPart")
+        if root then
+            if state.method == "Above" then
+                tp(CFrame.lookAt(root.Position + Vector3.new(0, state.aboveDist, 0), root.Position))
+            else
+                tp(root.CFrame * CFrame.new(0, 0, state.behindDist))
+            end
+            attack(root.CFrame)
+        end
+        return true
+    end
+
+    if not ghostShipLootDone and ghostRoot then
+        ghostShipLootDone   = true
+        isLootingGhostShip  = true
+
+        task.spawn(function()
+            WindUI:Notify({
+                Title   = "Ghost Ship",
+                Content = "Collecting chests...",
+                Icon    = "package",
+                Duration = 3
+            })
+
+            for i = 1, 5 do
+                local chestName = "Chest" .. i
+                local chest     = workspace:FindFirstChild(chestName)
+                if chest then
+                    local pos = nil
+                    if chest:IsA("BasePart") then
+                        pos = chest.Position
+                    elseif chest:IsA("Model") then
+                        local part = chest.PrimaryPart or chest:FindFirstChildWhichIsA("BasePart")
+                        pos = part and part.Position or chest:GetModelCFrame().Position
+                    end
+
+                    if pos then
+                        tp(CFrame.new(pos + Vector3.new(0, 2, 0)))
+                        task.wait(0.6)
+                    end
+                end
+            end
+            task.wait(0.3)
+            pcall(function()
+                local mirrorRoom = workspace:FindFirstChild("Island")
+                    and workspace.Island:FindFirstChild("Mirror Room")
+                if mirrorRoom then
+                    local pos = nil
+                    if mirrorRoom:IsA("Model") then
+                        local spawn = mirrorRoom:FindFirstChildWhichIsA("SpawnLocation")
+                            or mirrorRoom:FindFirstChild("SpawnPoint")
+                        if spawn then
+                            pos = spawn.Position
+                        else
+                            local part = mirrorRoom.PrimaryPart
+                                or mirrorRoom:FindFirstChildWhichIsA("BasePart")
+                            pos = part and part.Position
+                                or mirrorRoom:GetModelCFrame().Position
+                        end
+                    elseif mirrorRoom:IsA("Folder") then
+                        local part = mirrorRoom:FindFirstChildWhichIsA("BasePart", true)
+                        pos = part and part.Position
+                    end
+
+                    if pos then
+                        tp(CFrame.new(pos + Vector3.new(0, 5, 0)))
+                    end
+                end
+            end)
+
+            isLootingGhostShip = false
+        end)
+
+        return true
+    end
+
+    return false
+end
+
+			local function trySummonFarm()
+				if not autoSummonFarm then return false end
+				local bossData = SUMMON_BOSS_LIST[selectedSummonBoss]
+				if not bossData then return false end
+				local folder = workspace.Monster:FindFirstChild("Boss")
+				if not folder then return false end
+				local mob = folder:FindFirstChild(bossData.BossName) or folder:FindFirstChild(bossData.AI_Name)
+				if mob then
+					local hum  = mob:FindFirstChildOfClass("Humanoid")
+					local root = mob:FindFirstChild("HumanoidRootPart")
+					if hum and root and hum.Health > 0 then
+						if state.method == "Above" then
+							tp(CFrame.lookAt(root.Position + Vector3.new(0, state.aboveDist, 0), root.Position))
+						else
+							tp(root.CFrame * CFrame.new(0, 0, state.behindDist))
+						end
+						attack(root.CFrame)
+						return true
+					end
+				end
+				if tick() >= summonCooldown then
+					summonCooldown = tick() + 5
+					WindUI:Notify({Title="Summon Boss", Content="Summoning "..bossData.AI_Name.."...", Icon="skull", Duration=2})
+					pcall(function() EtcRemote:InvokeServer("QuestSpawnBoss", bossData) end)
+				end
+				return true
+			end
+
+			local function tryBossFarm()
+				if not autoBossFarm or #selectedBosses == 0 then return false end
+				local folder = workspace.Monster:FindFirstChild("Boss")
+				if not folder then return false end
+				if bossIndex > #selectedBosses then bossIndex = 1 end
+				local targetMob  = nil
+				local startIndex = bossIndex
+				repeat
+					local bossName = selectedBosses[bossIndex]
+					for _, mob in ipairs(folder:GetChildren()) do
+						if mob.Name == bossName then
+							local hum  = mob:FindFirstChildOfClass("Humanoid")
+							local root = mob:FindFirstChild("HumanoidRootPart")
+							if hum and root and hum.Health > 0 then targetMob = mob break end
+						end
+					end
+					if not targetMob then bossIndex = bossIndex % #selectedBosses + 1 end
+				until targetMob or bossIndex == startIndex
+				if not targetMob then return false end
+				local root = targetMob:FindFirstChild("HumanoidRootPart")
+				if root then
+					if state.method == "Above" then
+						tp(CFrame.lookAt(root.Position + Vector3.new(0,state.aboveDist,0), root.Position))
+					else
+						tp(root.CFrame * CFrame.new(0,0,state.behindDist))
+					end
+					attack(root.CFrame)
+					local hum = targetMob:FindFirstChildOfClass("Humanoid")
+					if hum and hum.Health <= 0 then bossIndex = bossIndex % #selectedBosses + 1 end
+				end
+				return true
+			end
+
+			local function tryDungeon()
+				if not autoDungeon then return false end
+				local mobFolder = workspace:FindFirstChild("MOB")
+				if not mobFolder then return false end
+				local targetMob   = nil
+				local myRoot2     = myChar:FindFirstChild("HumanoidRootPart")
+				local closestDist = math.huge
+				for _, mob in ipairs(mobFolder:GetDescendants()) do
+					if not mob:IsA("Model") then continue end
+					local hum  = mob:FindFirstChildOfClass("Humanoid")
+					local root = mob:FindFirstChild("HumanoidRootPart")
+					if hum and root and hum.Health > 0 and myRoot2 then
+						local dist = (root.Position - myRoot2.Position).Magnitude
+						if dist < closestDist then closestDist = dist targetMob = mob end
+					end
+				end
+				if not targetMob then return false end
+				local root = targetMob:FindFirstChild("HumanoidRootPart")
+				if root then
+					if state.method == "Above" then
+						tp(CFrame.lookAt(root.Position + Vector3.new(0,state.aboveDist,0), root.Position))
+					else
+						tp(root.CFrame * CFrame.new(0,0,state.behindDist))
+					end
+					attack(root.CFrame)
+				end
+				return true
+			end
+
+			local function tryDropFarm()
+				if not autoDropFarm then return false end
+				local activeDrops = getActiveDrops()
+				if #activeDrops == 0 then return false end
+				if dropBossIndex > #activeDrops then dropBossIndex = 1 end
+				local dropName = activeDrops[dropBossIndex]
+				local bossName = DROP_BOSS_MAP[dropName]
+				if bossName then
+					local killed = farmBossByName(bossName)
+					if not killed then dropBossIndex = dropBossIndex % #activeDrops + 1 end
+				else
+					dropBossIndex = dropBossIndex % #activeDrops + 1
+				end
+				return true
+			end
+
+			local function tryAutoFarm()
+				if not state.autofarm then return false end
+				checklevel()
+				local currentQuest = lp.CurrentQuest.Value
+				if not MON or not FOLDER then return false end
+				if currentQuest == "" then
+					QuestRemote:InvokeServer(unpack(QUEST_ARGS)) task.wait(0.5) return true
+				elseif not isQuestValidForLevel() then
+					abandonQuest() task.wait(0.5)
+					QuestRemote:InvokeServer(unpack(QUEST_ARGS)) task.wait(0.5) return true
+				end
+				local folder   = workspace.Monster:FindFirstChild(FOLDER)
+				if not folder then return false end
+				local entities = getEntities(MON, folder)
+				if #entities > 0 then
+					local mob  = entities[1]
+					local root = mob:FindFirstChild("HumanoidRootPart")
+					local hum  = mob:FindFirstChild("Humanoid")
+					if root and hum and hum.Health > 0 then
+						if state.method == "Above" then
+							tp(CFrame.lookAt(root.Position + Vector3.new(0,state.aboveDist,0), root.Position))
+						else
+							tp(root.CFrame * CFrame.new(0,0,state.behindDist))
+						end
+						attack(root.CFrame)
+					end
+				else
+					local found = false
+					pcall(function()
+						for _, entity in pairs(EntityProxy:GetChildren()) do
+							if entity.Name == MON then
+								local pivot = entity.WorldPivot
+								tp(CFrame.new(Vector3.new(pivot.X, pivot.Y+5, pivot.Z)))
+								found = true break
+							end
+						end
+					end)
+					if not found and Entity_Position[MON] then
+						tp(CFrame.new(Entity_Position[MON].Position + Vector3.new(0,60,0)))
+					end
+				end
+				return true
+			end
+
+			local function tryTreeFarm()
+				if not autoTreeFarm then return false end
+				if #allTrees == 0 then collectAllTrees() treeIndex = 1 return true end
+				if treeIndex > #allTrees then treeIndex = 1 end
+				local part = allTrees[treeIndex]
+				if part and part.Parent then
+					tp(CFrame.new(part.Position + Vector3.new(0,3,0)))
+					task.wait(3)
+					treeIndex = treeIndex + 1
+				else
+					table.remove(allTrees, treeIndex)
+				end
+				return true
+			end
+
+			if trySeaKing()    then return end
+			if tryGhostShip()  then return end
+			if trySummonFarm() then return end
+			if tryBossFarm()   then return end
+			if tryDungeon()    then return end
+			if tryDropFarm()   then return end
+			if tryAutoFarm()   then return end
+			if tryTreeFarm()   then return end
+		end)
+	end
+end)
+
+-- ==================== Level Check ====================
+task.spawn(function()
+	local notified = false
+	while task.wait(5) do
+		pcall(function()
+			local level = lp.PlayerStats.lvl.Value
+			if level >= 2300 and not notified then
+				notified = true
+				WindUI:Notify({Title="Level 2300+", Content="Go to World 2!", Icon="circle-check-big", Duration=10})
+			end
+		end)
+	end
+end)
+
+-- ==================== Window ====================
+local Window = WindUI:CreateWindow({
+	Title="AXEL Hub", Icon="door-open", Author="by TEN", Folder="AxelHub",
+	Size=UDim2.fromOffset(580,460), MinSize=Vector2.new(560,350), MaxSize=Vector2.new(850,560),
+	Transparent=true, Theme="AxelDark", Resizable=true, SideBarWidth=200,
+	BackgroundImageTransparency=0.42, HideSearchBar=true, ScrollBarEnabled=false,
+})
+Window:Tag({Title="v0.0.1", Icon="", Color=Color3.fromHex("#30ff6a"), Radius=0})
+Window:Tag({Title="AXEL HUB", Icon="crown", Color=Color3.fromHex("#7c3aed"), Radius=6})
+
+local FarmTab    = Window:Tab({Title="Auto Farm",  Icon="swords"      })
+local BossTab    = Window:Tab({Title="Boss Farm",  Icon="skull"       })
+local MatTab     = Window:Tab({Title="Material",   Icon="package"     })
+local ShopTab    = Window:Tab({Title="Merchant",   Icon="store"       })
+local CraftTab   = Window:Tab({Title="Crafting",   Icon="anvil"       })
+local DungeonTab = Window:Tab({Title="Dungeon",    Icon="door-closed" })
+local FishTab    = Window:Tab({Title="Fishing",    Icon="fish"        })
+local MiscTab    = Window:Tab({Title="Misc",       Icon="chart-bar"   })
+local SettingTab = Window:Tab({Title="Setting",    Icon="settings"    })
+
+-- ==================== Farm Tab ====================
+FarmTab:Button({Title="Refresh Weapons", Desc="", Icon="refresh-cw", Callback=function() refreshWeaponList() end})
+
+local weaponSwapIndex = 1
+local autoSwapSkill   = false
+
+WeaponDropdown = FarmTab:Dropdown({
+	Title="Select Weapon", Desc="", Values=Weaponlist, Value=Options.SelectedWeapon or selectedWeapon,
+	Callback=function(option)
+		selectedWeapon = option
+		Options.SelectedWeapon = option
+		SaveConfig()
+	end
+})
+
+FarmTab:Toggle({
+	Title="Auto Equip", Desc="", Icon="circle-check-big", Type="Checkbox",
+	Value=Options.AutoEquip or false,
+	Callback=function(s) Options.AutoEquip=s SaveConfig() AutoEquip=s end
+})
+FarmTab:Divider()
+
+FarmTab:Toggle({
+	Title="Auto Farm", Desc="Auto quest + farm monsters", Icon="circle-check-big", Type="Checkbox",
+	Value=Options.AutoFarm or false,
+	Callback=function(s)
+		Options.AutoFarm=s SaveConfig() state.autofarm=s _G.Farm=s _G.Autoquest=s
+		if not s then disableAbove() elseif state.method=="Above" then enableAbove() end
+	end
+})
+FarmTab:Divider()
+
+FarmTab:Dropdown({
+	Title="Farm Method", Desc="", Icon="crosshair",
+	Values={"Behind","Above"}, Value=Options.FarmMethod or "Behind", Multi=false,
+	Callback=function(val)
+		Options.FarmMethod=val SaveConfig() state.method=val
+		if state.autofarm or autoDungeon or autoBossFarm or autoDropFarm then
+			if val=="Above" then enableAbove() else disableAbove() end
+		end
+		WindUI:Notify({Title="Farm Method", Content="Switched to: "..val, Icon="crosshair", Duration=3})
+	end
+})
+
+FarmTab:Slider({
+	Title="Distance", Desc="", Icon="move", Step=1,
+	Value={Min=1, Max=20, Default=Options.Distance or 3},
+	Callback=function(val)
+		Options.Distance=val SaveConfig() state.behindDist=val state.aboveDist=val
+	end
+})
+FarmTab:Divider()
+
+FarmTab:Toggle({
+	Title="Auto BusoHaki", Desc="", Icon="circle-check-big", Type="Checkbox",
+	Value=Options.AutoBuso or false,
+	Callback=function(on) Options.AutoBuso=on SaveConfig() autoBuso=on if on then enableBuso() end end
+})
+
+FarmTab:Toggle({
+	Title="Auto KenHaki", Desc="", Icon="circle-check-big", Type="Checkbox",
+	Value=Options.AutoKen or false,
+	Callback=function(on) Options.AutoKen=on SaveConfig() autoKen=on if on then enableKen() end end
+})
+FarmTab:Divider()
+
+FarmTab:Toggle({
+	Title="Enable Auto Skill", Desc="", Icon="circle-check-big", Type="Checkbox",
+	Value=Options.AutoSkill or false,
+	Callback=function(on) Options.AutoSkill=on SaveConfig() autoSkillEnabled=on end
+})
+
+FarmTab:Dropdown({
+	Title="Select Skills", Desc="", Icon="zap",
+	Values=skillKeys, Value=Options.Selectskill or {}, Multi=true,
+	Callback=function(selected)
+		selectedSkills = {}
+		if type(selected)=="table" then
+			if selected[1] then for _,v in ipairs(selected) do table.insert(selectedSkills,v) end
+			else for k,v in pairs(selected) do if v==true then table.insert(selectedSkills,k) end end end
+		elseif type(selected)=="string" then table.insert(selectedSkills,selected) end
+		Options.SelectedSkills=selectedSkills SaveConfig()
+	end
+})
+
+FarmTab:Dropdown({
+	Title="Select Swap Weapons", Desc="Selected 2 weapons to swap",
+	Values=Weaponlist, Value=Options.Selectswap or {}, Multi=true,
+	Callback=function(selected)
+		swapWeaponList = {}
+		if type(selected)=="table" then
+			if selected[1] then for _,v in ipairs(selected) do if #swapWeaponList<2 then table.insert(swapWeaponList,v) end end
+			else for k,v in pairs(selected) do if v==true and #swapWeaponList<2 then table.insert(swapWeaponList,k) end end end
+		elseif type(selected)=="string" then table.insert(swapWeaponList,selected) end
+		selectedWeapon=swapWeaponList[1] or ""
+		Options.Selectswap=swapWeaponList SaveConfig()
+	end
+})
+
+FarmTab:Toggle({
+	Title="Auto Swap Skill", Desc="Use it when you use 2 weapons to farm",
+	Icon="circle-check-big", Type="Checkbox",
+	Value=Options.AutoSwapSkill or false,
+	Callback=function(on) Options.AutoSwapSkill=on SaveConfig() autoSwapSkill=on end
+})
+
+task.spawn(function()
+	while task.wait(0.3) do
+		if not autoSwapSkill then continue end
+		if #swapWeaponList < 2 then continue end
+		if #selectedSkills == 0 then continue end
+		pcall(function()
+			local char = lp.Character
+			if not char then return end
+			weaponSwapIndex = (weaponSwapIndex % #swapWeaponList) + 1
+			local weaponName = swapWeaponList[weaponSwapIndex]
+			selectedWeapon = weaponName
+			local tool = lp.Backpack:FindFirstChild(weaponName)
+			if tool then char.Humanoid:EquipTool(tool) task.wait(0.15) end
+			for _, key in ipairs(selectedSkills) do
+				local cd = skillCooldowns[key] or 0
+				if tick() >= cd then skillCooldowns[key]=tick()+0.25 fireSkill(key) task.wait(0.05) end
+			end
+		end)
+	end
+end)
+
+-- ==================== Boss Tab ====================
+BossTab:Button({Title="Refresh Boss List", Desc="", Icon="refresh-cw", Callback=function() refreshBossList() end})
+
+BossDropdown = BossTab:Dropdown({
+	Title="Select Boss", Desc="", Icon="skull",
+	Values=BossList, Value=Options.SelectedBosses or {}, Multi=true,
+	Callback=function(selected)
+		selectedBosses = {}
+		if type(selected)=="table" then
+			if selected[1] then for _,v in ipairs(selected) do table.insert(selectedBosses,v) end
+			else for k,v in pairs(selected) do if v==true then table.insert(selectedBosses,k) end end end
+		elseif type(selected)=="string" then table.insert(selectedBosses,selected) end
+		Options.SelectedBosses=selectedBosses SaveConfig()
+	end
+})
+
+BossTab:Toggle({
+	Title="Auto Farm Boss", Desc="Farm selected bosses",
+	Icon="circle-check-big", Type="Checkbox",
+	Value=Options.AutoBossFarm or false,
+	Callback=function(on)
+		Options.AutoBossFarm=on SaveConfig() autoBossFarm=on 
+		if not on then disableAbove() elseif state.method=="Above" then enableAbove() end
+	end
+})
+BossTab:Divider()
+
+BossTab:Dropdown({
+	Title="Select Summon Boss", Desc="Choose boss to summon", Icon="skull",
+	Values=summonBossNames, Value=Options.SelectedSummonBoss or selectedSummonBoss, Multi=false,
+	Callback=function(val) selectedSummonBoss=val Options.SelectedSummonBoss=val SaveConfig() end
+})
+
+BossTab:Toggle({
+	Title="Auto Summon & Farm", Desc="Auto spawn and kill the selected boss",
+	Icon="circle-check-big", Type="Checkbox",
+	Value=Options.AutoSummonFarm or false,
+	Callback=function(on)
+		Options.AutoSummonFarm=on SaveConfig() autoSummonFarm=on
+		if not on then disableAbove() elseif state.method=="Above" then enableAbove() end
+	end
+})
+BossTab:Divider()
+
+BossTab:Toggle({
+	Title="Auto Serpent / Sea King", Desc="Farm Serpent / Seaking",
+	Icon="circle-check-big", Type="Checkbox",
+	Value=Options.AutoSeaking or false,
+	Callback=function(on)
+		Options.AutoSeaking=on SaveConfig() autoSeaking=on
+		if not on then
+			disableAbove()
+			stopSeaKingRespawnWatch()
+		else
+			if state.method=="Above" then enableAbove() end
+			startSeaKingRespawnWatch()
+		end
+	end
+})
+
+BossTab:Toggle({
+	Title="Auto Ghost Ship", Desc="Farm Ghost Ships automatically",
+	Icon="circle-check-big", Type="Checkbox",
+	Value=Options.AutoGhostShip or false,
+	Callback=function(on)
+		Options.AutoGhostShip=on SaveConfig() autoGhostShip=on
+		if not on then disableAbove() elseif state.method=="Above" then enableAbove() end
+	end
+})
+
+-- ==================== Material Tab ====================
+MatTab:Dropdown({
+	Title="Select Material", Desc="", Values=MATERIAL_LIST, Value={}, Multi=true, AllowNone=true,
+	Callback=function(selected)
+		selectedMaterials = {}
+		if type(selected)=="table" then
+			if selected[1] then for _,v in ipairs(selected) do table.insert(selectedMaterials,v) end
+			else for k,v in pairs(selected) do if v==true then table.insert(selectedMaterials,k) end end end
+		elseif type(selected)=="string" and selected~="" then table.insert(selectedMaterials,selected) end
+		dropBossIndex=1
+	end
+})
+
+MatTab:Dropdown({
+	Title="Select Weapon Drop", Desc="", Values=WEAPON_LIST, Value={}, Multi=true, AllowNone=true,
+	Callback=function(selected)
+		selectedWeapons = {}
+		if type(selected)=="table" then
+			if selected[1] then for _,v in ipairs(selected) do table.insert(selectedWeapons,v) end
+			else for k,v in pairs(selected) do if v==true then table.insert(selectedWeapons,k) end end end
+		elseif type(selected)=="string" and selected~="" then table.insert(selectedWeapons,selected) end
+		dropBossIndex=1
+	end
+})
+
+MatTab:Dropdown({
+	Title="Select Accessory", Desc="", Values=ACCESSORY_LIST, Value={}, Multi=true, AllowNone=true,
+	Callback=function(selected)
+		selectedAccessories = {}
+		if type(selected)=="table" then
+			if selected[1] then for _,v in ipairs(selected) do table.insert(selectedAccessories,v) end
+			else for k,v in pairs(selected) do if v==true then table.insert(selectedAccessories,k) end end end
+		elseif type(selected)=="string" and selected~="" then table.insert(selectedAccessories,selected) end
+		dropBossIndex=1
+	end
+})
+MatTab:Divider()
+
+MatTab:Toggle({
+	Title="Auto Farm Material", Desc="", Icon="circle-check-big", Type="Checkbox", Value=false,
+	Callback=function(on)
+		autoDropFarm=on dropBossIndex=1
+		if not on then disableAbove() elseif state.method=="Above" then enableAbove() end
+	end
+})
+MatTab:Divider()
+
+MatTab:Toggle({
+	Title="Auto Log Farm", Desc="Use with Auto Skill", Icon="circle-check-big", Type="Checkbox",
+	Value=Options.AutoTreeFarm or false,
+	Callback=function(on)
+		Options.AutoTreeFarm=on SaveConfig() autoTreeFarm=on
+		if on then collectAllTrees() treeIndex=1 end
+	end
+})
+
+-- ==================== Merchant Tab ====================
+ShopTab:Button({
+	Title="Buy KenHaki", Desc="Price 1,500,000 Beli", Icon="shopping-cart",
+	Callback=function()
+		if lp.PlayerStats.beli.Value >= 1500000 then
+			pcall(function()
+				tp(CFrame.new(
+					-4987.34229, 441.718231, 1191.84241,
+					1, 0, 1.75187087e-25,
+					0, 1, 0,
+					-1.75187087e-25, 0, 1
+				))
+				task.wait(0.8)
+
+				local args = {
+					workspace:WaitForChild("AllNPC"):WaitForChild("KenShop")
+				}
+				game:GetService("ReplicatedStorage")
+					:WaitForChild("Chest"):WaitForChild("Remotes")
+					:WaitForChild("Functions"):WaitForChild("CheckQuest")
+					:InvokeServer(unpack(args))
+				task.wait(1.5)
+
+				local VIM = game:GetService("VirtualInputManager")
+				game:GetService("GuiService").SelectedObject =
+					lp.PlayerGui["KenShop"].Dialogue.Accept
+				task.wait(0.1)
+				VIM:SendKeyEvent(true,  Enum.KeyCode.Return, false, game)
+				VIM:SendKeyEvent(false, Enum.KeyCode.Return, false, game)
+				task.wait(0.3)
+
+				KenEvent:InvokeServer("Buy", "KenHaki")
+			end)
+			WindUI:Notify({Title="KenHaki", Content="Purchase successful!", Icon="shopping-cart", Duration=3})
+		else
+			WindUI:Notify({Title="KenHaki", Content="Not enough Beli! (need 1,500,000)", Icon="x-circle", Duration=3})
+		end
+	end
+})
+
+ShopTab:Button({
+	Title="Buy BusoHaki", Desc="Price 500,000 Beli", Icon="shopping-cart",
+	Callback=function()
+		if lp.PlayerStats.beli.Value >= 500000 then
+			pcall(function()
+				tp(CFrame.new(
+					1956.41394, 43.7350006, 912.776978,
+					-0.462879181, -0, -0.886421561,
+					0, 1, -0,
+					0.886421561, 0, -0.462879181
+				))
+				task.wait(0.8)
+
+				local args = {
+					workspace:WaitForChild("AllNPC"):WaitForChild("BusoShop")
+				}
+				game:GetService("ReplicatedStorage")
+					:WaitForChild("Chest"):WaitForChild("Remotes")
+					:WaitForChild("Functions"):WaitForChild("CheckQuest")
+					:InvokeServer(unpack(args))
+				task.wait(1.5)
+
+				local VIM = game:GetService("VirtualInputManager")
+				game:GetService("GuiService").SelectedObject =
+					lp.PlayerGui["BusoShop"].Dialogue.Accept
+				task.wait(0.1)
+				VIM:SendKeyEvent(true,  Enum.KeyCode.Return, false, game)
+				VIM:SendKeyEvent(false, Enum.KeyCode.Return, false, game)
+				task.wait(0.3)
+
+				KenEvent:InvokeServer("Buy", "BusoHaki")
+			end)
+			WindUI:Notify({Title="BusoHaki", Content="Purchase successful!", Icon="shopping-cart", Duration=3})
+		else
+			WindUI:Notify({Title="BusoHaki", Content="Not enough Beli! (need 500,000)", Icon="x-circle", Duration=3})
+		end
+	end
+})
+ShopTab:Divider()
+ShopTab:Section({Title="Blacksmith"})
+
+local upgradeRemote   = RepStorage:WaitForChild("Chest"):WaitForChild("Remotes"):WaitForChild("Functions"):WaitForChild("Upgrade")
+local selectedupgrade = ""
+
+ShopTab:Dropdown({
+	Title="Choose Item", Desc="", Values={"Sword","Accessory"}, Value="--",
+	Callback=function(option) selectedupgrade=option end
+})
+
+ShopTab:Button({
+	Title="Upgrade Weapon", Desc="", Icon="hammer",
+	Callback=function()
+		if not selectedupgrade or selectedupgrade=="" then
+			WindUI:Notify({Title="Upgrade", Content="Please Select Item", Icon="x-circle", Duration=3}) return
+		end
+		local ok,result = pcall(function() return upgradeRemote:InvokeServer(selectedupgrade) end)
+		if ok then WindUI:Notify({Title="Upgrade", Content="Success!", Icon="circle-check-big", Duration=3})
+		else WindUI:Notify({Title="Upgrade Failed", Content=tostring(result), Icon="x-circle", Duration=3}) end
+	end
+})
+ShopTab:Divider()
+ShopTab:Section({Title="Teleport to NPC"})
+
+local npcList     = {}
+local selectedNPC = ""
+local NPCDropdown
+local DELETE_NPC  = {["SetSpawn"]=true,["BuyShips"]=true}
+
+local function refreshNPCList()
+	npcList = {}
+	local allNPC = workspace:FindFirstChild("AllNPC")
+	if allNPC then
+		for _, npc in ipairs(allNPC:GetChildren()) do
+			if (npc:IsA("Model") or npc:IsA("BasePart") or npc:IsA("Folder")) and not DELETE_NPC[npc.Name] then
+				table.insert(npcList, npc.Name)
+			end
+		end
+	end
+	if #npcList==0 then npcList={"(No NPC Found)"} end
+	table.sort(npcList)
+	selectedNPC=npcList[1]
+	if NPCDropdown then NPCDropdown.Values=npcList NPCDropdown:Select(selectedNPC) end
+end
+
+refreshNPCList()
+
+ShopTab:Button({Title="Refresh NPC List", Desc="", Icon="refresh-cw", Callback=function() refreshNPCList() end})
+
+NPCDropdown = ShopTab:Dropdown({
+	Title="Select NPC", Desc="", Icon="map-pin",
+	Values=npcList, Value=selectedNPC, AllowNone=true, Multi=false,
+	Callback=function(val) selectedNPC=val end
+})
+
+ShopTab:Button({
+	Title="Teleport to NPC", Desc="", Icon="map-pin",
+	Callback=function()
+		if not selectedNPC or selectedNPC=="" or selectedNPC=="(No NPC Found)" then
+			WindUI:Notify({Title="TP NPC", Content="Please select an NPC first", Icon="x-circle", Duration=3}) return
+		end
+		local allNPC = workspace:FindFirstChild("AllNPC")
+		if not allNPC then return end
+		local target = allNPC:FindFirstChild(selectedNPC)
+		if not target then
+			WindUI:Notify({Title="TP NPC", Content="NPC not found: "..selectedNPC, Icon="x-circle", Duration=3}) return
+		end
+		pcall(function()
+			local pos
+			if target:IsA("Model") then
+				local root = target:FindFirstChild("HumanoidRootPart") or target:FindFirstChildWhichIsA("BasePart")
+				pos = root and root.Position or target:GetModelCFrame().Position
+			elseif target:IsA("BasePart") then pos=target.Position end
+			if pos then
+				tp(CFrame.new(pos + Vector3.new(0,3,0)))
+				WindUI:Notify({Title="Teleported", Content="→ "..selectedNPC, Icon="map-pin", Duration=3})
+			end
+		end)
+	end
+})
+
+-- ==================== Craft Tab ====================
+CraftTab:Section({Title="Book Crafting"})
+
+local craftRemote       = RepStorage:WaitForChild("Chest"):WaitForChild("Remotes"):WaitForChild("Functions"):WaitForChild("CraftMaterial")
+local CRAFT_ITEMS       = {"Chonicles Lore","Fortune Tales","Essence Book","Fate Book"}
+local selectedCraftItem = CRAFT_ITEMS[1]
+
+CraftTab:Dropdown({
+	Title="Select Item", Desc="", Icon="package",
+	Values=CRAFT_ITEMS, Value=selectedCraftItem, Multi=false,
+	Callback=function(val) selectedCraftItem=val end
+})
+
+CraftTab:Button({
+	Title="Craft", Desc="", Icon="hammer",
+	Callback=function()
+		if not selectedCraftItem or selectedCraftItem=="" then
+			WindUI:Notify({Title="Craft", Content="Please Select Item", Icon="x-circle", Duration=3}) return
+		end
+		local ok,result = pcall(function() return craftRemote:InvokeServer(selectedCraftItem,"CraftingUI2") end)
+		if ok then WindUI:Notify({Title="Craft", Content="Craft Success: "..selectedCraftItem, Icon="circle-check-big", Duration=3})
+		else WindUI:Notify({Title="Craft Failed", Content=tostring(result), Icon="x-circle", Duration=3}) end
+	end
+})
+
+local craftSwordRemote = RepStorage:WaitForChild("Chest"):WaitForChild("Remotes"):WaitForChild("Functions"):WaitForChild("CraftSword")
+local ROD_ITEMS        = {"Basic Rod"}
+local selectedRodItem  = ROD_ITEMS[1]
+
+CraftTab:Dropdown({
+	Title="Select Rod", Desc="", Icon="anchor",
+	Values=ROD_ITEMS, Value=selectedRodItem, Multi=false,
+	Callback=function(val) selectedRodItem=val end
+})
+
+CraftTab:Button({
+	Title="Craft Rod", Desc="", Icon="hammer",
+	Callback=function()
+		if not selectedRodItem or selectedRodItem=="" then
+			WindUI:Notify({Title="Craft Rod", Content="Please Select Item", Icon="x-circle", Duration=3}) return
+		end
+		local ok,result = pcall(function() return craftSwordRemote:InvokeServer(selectedRodItem,"CraftingUI2") end)
+		if ok then WindUI:Notify({Title="Craft Rod", Content="Craft Success: "..selectedRodItem, Icon="circle-check-big", Duration=3})
+		else WindUI:Notify({Title="Craft Rod Failed", Content=tostring(result), Icon="x-circle", Duration=3}) end
+	end
+})
+
+-- ==================== Dungeon Tab ====================
+DungeonTab:Toggle({
+	Title="Join Dungeon", Desc="", Icon="circle-check-big", Type="Checkbox", Value=false,
+	Callback=function(on)
+		JoinDungeon=on
+		if on then
+			task.spawn(function()
+				local startTime=tick()
+				while JoinDungeon and (tick()-startTime)<15 do
+					if DungeonPos then tp(DungeonPos) end
+					task.wait(0.2)
+				end
+			end)
+		end
+	end
+})
+DungeonTab:Divider()
+
+DungeonTab:Toggle({
+	Title="Auto Dungeon", Desc="Auto kill mob", Icon="circle-check-big", Type="Checkbox", Value=false,
+	Callback=function(on)
+		autoDungeon=on
+		if not on then disableAbove() elseif state.method=="Above" then enableAbove() end
+	end
+})
+DungeonTab:Divider()
+
+-- ==================== Fish Tab ====================
+local fishingWeapon    = ""
+local fishingAutoEquip = Options.FishAutoEquip or false
+local FishingDropdown
+
+FishTab:Button({
+	Title="Refresh Rod", Desc="", Icon="refresh-cw",
+	Callback=function()
+		refreshWeaponList()
+		if FishingDropdown then
+			local rods=getRodList()
+			FishingDropdown.Values=rods
+			if #rods>0 then FishingDropdown:Select(rods[1]) fishingWeapon=rods[1] end
+		end
+	end
+})
+
+FishingDropdown = FishTab:Dropdown({
+	Title="Select Fishing Rod", Desc="", Icon="anchor",
+	Values=getRodList(), Value=fishingWeapon,
+	Callback=function(val) fishingWeapon=val end
+})
+
+FishTab:Toggle({
+	Title="Auto Equip Rod", Desc="", Icon="circle-check-big", Type="Checkbox",
+	Value=Options.FishAutoEquip or false,
+	Callback=function(v) Options.FishAutoEquip=v SaveConfig() fishingAutoEquip=v end
+})
+
+task.spawn(function()
+	while task.wait(0.5) do
+		if not fishingAutoEquip then continue end
+		pcall(function()
+			local char=lp.Character
+			if not char or fishingWeapon=="" then return end
+			local tool=lp.Backpack:FindFirstChild(fishingWeapon)
+			if tool then char.Humanoid:EquipTool(tool) end
+		end)
+	end
+end)
+FishTab:Divider()
+
+FishTab:Toggle({
+	Title="Auto Fishing", Desc="Auto use fishing rod skill",
+	Icon="circle-check-big", Type="Checkbox",
+	Value=Options.AutoFishing or false,
+	Callback=function(on)
+		Options.AutoFishing=on SaveConfig() autoFishing=on
+		if on then
+			task.spawn(function()
+				while autoFishing do
+					task.wait(0.5)
+					pcall(function()
+						local char=lp.Character
+						if not char then return end
+						local equippedTool=char:FindFirstChildOfClass("Tool")
+						if equippedTool and (fishingWeapon=="" or equippedTool.Name==fishingWeapon) then
+							SkillRemote:InvokeServer("SW_"..equippedTool.Name.."_M1",{Charge=100})
+							task.wait(2.5)
+						end
+					end)
+				end
+			end)
+		end
+		WindUI:Notify({Title="Fishing", Content=on and "Auto Fishing ON" or "OFF", Icon="fish", Duration=3})
+	end
+})
+
+-- ==================== Misc Tab ====================
+local selectedStat = Options.SelectedStat or "Melee"
+
+local function addStat(statName)
+	lp:WaitForChild("PlayerGui"):WaitForChild("MainGui"):WaitForChild("StarterFrame")
+	:WaitForChild("StatsFrame"):WaitForChild("RemoteEvent"):FireServer(statName,1)
+end
+
+MiscTab:Dropdown({
+	Title="Choose Stat", Desc="", Values={"Melee","Defense","Sword","Fruit"},
+	Value=Options.SelectedStat or "Melee",
+	Callback=function(option) Options.SelectedStat=option SaveConfig() selectedStat=option end
+})
+
+MiscTab:Toggle({
+	Title="Auto Stats", Desc="", Icon="circle-check-big", Type="Checkbox",
+	Value=Options.AutoStat or false,
+	Callback=function(s)
+		Options.AutoStat=s SaveConfig() _G.AutoStat=s
+		if s then
+			coroutine.wrap(function()
+				while _G.AutoStat do
+					if lp.PlayerStats.Points.Value>0 then addStat(selectedStat) end
+					task.wait(0.1)
+				end
+			end)()
+		end
+	end
+})
+MiscTab:Divider()
+
+local islandList       = {}
+local selectedIslandTP = ""
+local IslandTPDropdown
+
+local function refreshIslandList()
+	islandList={}
+	local islandFolder=workspace:FindFirstChild("Island")
+	if islandFolder then
+		for _,island in ipairs(islandFolder:GetChildren()) do
+			if island:IsA("Model") or island:IsA("Folder") then table.insert(islandList,island.Name) end
+		end
+	end
+	table.sort(islandList)
+	if #islandList==0 then islandList={"(No Island Found)"} end
+	selectedIslandTP=islandList[1]
+	if IslandTPDropdown then IslandTPDropdown.Values=islandList IslandTPDropdown:Select(selectedIslandTP) end
+end
+
+refreshIslandList()
+
+MiscTab:Button({Title="Refresh Island List", Desc="", Icon="refresh-cw", Callback=function() refreshIslandList() end})
+
+IslandTPDropdown = MiscTab:Dropdown({
+	Title="Select Island", Desc="", Icon="map-pin",
+	Values=islandList, Value=selectedIslandTP, Multi=false,
+	Callback=function(val) selectedIslandTP=val end
+})
+
+MiscTab:Button({
+	Title="Teleport to Island", Desc="", Icon="map-pin",
+	Callback=function()
+		if not selectedIslandTP or selectedIslandTP=="" or selectedIslandTP=="(No Island Found)" then
+			WindUI:Notify({Title="TP Island", Content="Please select an island first", Icon="x-circle", Duration=3}) return
+		end
+		local islandFolder=workspace:FindFirstChild("Island")
+		if not islandFolder then return end
+		local target=islandFolder:FindFirstChild(selectedIslandTP)
+		if not target then
+			WindUI:Notify({Title="TP Island", Content="Island not found: "..selectedIslandTP, Icon="x-circle", Duration=3}) return
+		end
+		pcall(function()
+			local pos
+			if target:IsA("Model") then
+				local spawn=target:FindFirstChildWhichIsA("SpawnLocation") or target:FindFirstChild("SpawnPoint")
+				if spawn then pos=spawn.Position
+				else
+					local part=target.PrimaryPart or target:FindFirstChildWhichIsA("BasePart")
+					pos=part and part.Position or target:GetModelCFrame().Position
+				end
+			elseif target:IsA("Folder") then
+				local part=target:FindFirstChildWhichIsA("BasePart",true)
+				pos=part and part.Position
+			end
+			if pos then
+				tp(CFrame.new(pos+Vector3.new(0,5,0)))
+				WindUI:Notify({Title="Teleported", Content="→ "..selectedIslandTP, Icon="map-pin", Duration=3})
+			else
+				WindUI:Notify({Title="TP Island", Content="Cannot find position", Icon="x-circle", Duration=3})
+			end
+		end)
+	end
+})
+
+_G.AutoPassiveTree = false
+MiscTab:Toggle({
+	Title="Tp to Passive Tree", Desc="", Icon="circle-check-big", Type="Checkbox", Value=false,
+	Callback=function(v)
+		_G.AutoPassiveTree=v
+		if v then
+			task.spawn(function()
+				local folder=workspace:FindFirstChild("AllNPC")
+				local target=folder and folder:FindFirstChild("PassiveTree")
+				if not target then
+					_G.AutoPassiveTree=false
+					WindUI:Notify({Title="Passive Tree not spawned", Content="", Icon="x-circle", Duration=3}) return
+				end
+				while _G.AutoPassiveTree do
+					local char=lp.Character
+					local root=char and char:FindFirstChild("HumanoidRootPart")
+					local curTgt=workspace.AllNPC:FindFirstChild("PassiveTree")
+					if root and curTgt then
+						local targetCF=curTgt:IsA("Model") and curTgt:GetModelCFrame() or curTgt.CFrame
+						root.CFrame=targetCF
+					end
+					task.wait(0.25)
+				end
+			end)
+		end
+	end
+})
+
+local autoWorld2  = false
+local TravelerPos = CFrame.new(2587.55908,96.0977478,-1879.06396,-0.0681426525,0,-0.997675717,0,1,0,0.997675717,0,-0.0681426525)
+
+MiscTab:Toggle({
+	Title="Go to Traveler", Desc="Quest for go world 2", Icon="circle-check-big", Type="Checkbox", Value=false,
+	Callback=function(on)
+		autoWorld2=on
+		if on then
+			task.spawn(function()
+				while autoWorld2 do
+					pcall(function()
+						local traveler=workspace.AllNPC:FindFirstChild("Traveler")
+						local currentQuest=lp.CurrentQuest.Value
+						if currentQuest=="" then
+							tp(TravelerPos) task.wait(0.5)
+							if not lp.PlayerGui:FindFirstChild("Traveler") then
+								Remotes.CheckQuest:InvokeServer(traveler)
+							end
+							local VIM=game:GetService("VirtualInputManager")
+							game:GetService("GuiService").SelectedObject=lp.PlayerGui["Elite Pirate"].Dialogue.Accept
+							task.wait(0.1)
+							VIM:SendKeyEvent(true,Enum.KeyCode.Return,false,game)
+							VIM:SendKeyEvent(false,Enum.KeyCode.Return,false,game)
+						end
+					end)
+					task.wait(1)
+				end
+			end)
+		end
+	end
+})
+
+local autoWorld3 = false
+local JackPos    = CFrame.new(6558.88965,457.084717,-3229.604,0.358377755,-0,-0.933576643,0,1,-0,0.933576643,0,0.358377755)
+
+MiscTab:Toggle({
+	Title="Go to Jack Stones", Desc="Crafting item for world 3", Icon="circle-check-big", Type="Checkbox", Value=false,
+	Callback=function(on)
+		autoWorld3=on
+		if on then
+			task.spawn(function()
+				while autoWorld3 do
+					pcall(function()
+						local jackNPC=workspace.AllNPC:FindFirstChild("Jack Stones")
+						local currentQuest=lp.CurrentQuest.Value
+						if currentQuest=="" then
+							tp(JackPos) task.wait(0.5)
+							if jackNPC and not lp.PlayerGui:FindFirstChild("MaterialCraftingDialogue") then
+								Remotes.CheckQuest:InvokeServer(jackNPC)
+							end
+							local dlg=lp.PlayerGui:FindFirstChild("MaterialCraftingDialogue")
+							if dlg and dlg:FindFirstChild("Dialogue") then
+								local acceptButton=dlg.Dialogue:FindFirstChild("Accept")
+								if acceptButton and acceptButton.Visible and getconnections then
+									for _,v in pairs(getconnections(acceptButton.MouseButton1Click)) do v:Fire() end
+								end
+							end
+						end
+					end)
+					task.wait(1)
+				end
+			end)
+		end
+	end
+})
+MiscTab:Divider()
+
+local function travelButton(title, targetPos, npcFolder, npcName, guiName, worldName)
+	MiscTab:Button({
+		Title=title, Desc="", Icon="ship",
+		Callback=function()
+			pcall(function()
+				local root=lp.Character:WaitForChild("HumanoidRootPart",5)
+				if root then root.CFrame=targetPos end
+			end)
+			task.wait(1.5)
+			pcall(function()
+				local npc=workspace:WaitForChild("AllNPC",5):WaitForChild(npcName,5)
+				if npc then
+					RepStorage:WaitForChild("Chest"):WaitForChild("Remotes"):WaitForChild("Functions"):WaitForChild("CheckQuest"):InvokeServer(npc)
+				end
+			end)
+			task.wait(1)
+			local gui=lp.PlayerGui:WaitForChild(guiName,5)
+			if not gui then
+				WindUI:Notify({Title="Error", Content="GUI not found", Icon="x-circle", Duration=3}) return
+			end
+			task.wait(0.5)
+			local VIM=game:GetService("VirtualInputManager")
+			local acceptButton=gui:WaitForChild("Dialogue"):WaitForChild("Accept")
+			game:GetService("GuiService").SelectedObject=acceptButton
+			task.wait(0.1)
+			VIM:SendKeyEvent(true,Enum.KeyCode.Return,false,game)
+			VIM:SendKeyEvent(false,Enum.KeyCode.Return,false,game)
+			WindUI:Notify({Title=worldName, Content="Travelling...", Icon="ship", Duration=3})
+		end
+	})
+end
+
+travelButton("Travel to World 1",
+	CFrame.new(-3336.48364,16.8549156,253.276154,-0.179520011,0,0.983754456,0,1,0,-0.983754456,0,-0.179520011),
+	"AllNPC","Elite Pirate","Elite Pirate","World 1")
+travelButton("Travel to World 2",
+	CFrame.new(-2162.93872,17.2696724,-3988.07178,0.958296061,0,0.285777211,0,1,0,-0.285777211,0,0.958296061),
+	"AllNPC","Elite Pirate","Elite Pirate","World 2")
+travelButton("Travel to World 3",
+	CFrame.new(-6126.56055,16.8869972,1805.0863,0.34888047,-0,-0.937167168,0,1,-0,0.937167168,0,0.34888047),
+	"AllNPC","The Squid","The Squid","World 3")
+MiscTab:Divider()
+
+-- ==================== Setting Tab ====================
+SettingTab:Keybind({
+	Title="Toggle UI", Desc="Keybind to open/close UI", Value="LeftControl",
+	Callback=function(v) Window:SetToggleKey(Enum.KeyCode[v]) end
+})
+SettingTab:Divider()
+SettingTab:Section({Title="Config"})
+
+local ConfigManager = Window.ConfigManager
+local myConfig = ConfigManager:CreateConfig("AxelHubKing")
+
+SettingTab:Button({
+	Title="Save Config", Desc="Save current settings", Icon="save",
+	Callback=function()
+		local ok=pcall(function() myConfig:Save() end)
+		WindUI:Notify({Title="Config", Content=ok and "Saved!" or "Save failed", Icon=ok and "save" or "x-circle", Duration=3})
+	end
+})
+
+SettingTab:Button({
+	Title="Load Config", Desc="Load saved settings", Icon="folder-open",
+	Callback=function()
+		local ok=pcall(function() myConfig:Load() end)
+		WindUI:Notify({Title="Config", Content=ok and "Loaded!" or "Load failed", Icon=ok and "folder-open" or "x-circle", Duration=3})
+	end
+})
+
+pcall(function() myConfig:Load() end)
+
+FarmTab:Select()

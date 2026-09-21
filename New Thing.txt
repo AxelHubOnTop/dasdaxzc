@@ -1,0 +1,62 @@
+local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
+
+local Window = WindUI:CreateWindow({
+    Title = "Axel Hub",
+    Icon = "door-open", -- lucide icon
+    Author = "by vxny",
+    Folder = "AxelHub_Official",
+    
+    -- ↓ This all is Optional. You can remove it.
+    Size = UDim2.fromOffset(580, 460),
+    MinSize = Vector2.new(560, 350),
+    MaxSize = Vector2.new(850, 560),
+    Transparent = true,
+    Theme = "Dark",
+    Resizable = true,
+    SideBarWidth = 200,
+    BackgroundImageTransparency = 0.42,
+    HideSearchBar = true,
+    ScrollBarEnabled = false,
+    
+    -- ↓ Optional. You can remove it.
+    --[[ You can set 'rbxassetid://' or video to Background.
+        'rbxassetid://':
+            Background = "rbxassetid://", -- rbxassetid
+        Video:
+            Background = "video:YOUR-RAW-LINK-TO-VIDEO.webm", -- video 
+    --]]
+    
+    -- ↓ Optional. You can remove it.
+    User = {
+        Enabled = true,
+        Anonymous = true,
+        Callback = function()
+            print("clicked")
+        end,
+    },
+
+    })
+
+    Window:SetBackgroundImage("rbxassetid://86949082023913")
+    Window:SetToggleKey(Enum.KeyCode.RightControl)
+
+local Section = Window:Section({
+    Title = "Main",
+    Icon = "atom",
+    Opened = true,
+})
+
+local Tab = Section:Tab({
+    Title = "Farm",
+    Icon = "apple", -- optional
+    Locked = false,
+})
+
+Tab:Select() -- Select Tab
+
+Window:Tag({
+    Title = "Test",
+    Icon = "settings",
+    Color = Color3.fromHex("#30ff6a"),
+    Radius = 0, -- from 0 to 13
+})

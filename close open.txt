@@ -1,0 +1,563 @@
+local MacLib = loadstring(game:HttpGet("https://github.com/biggaboy212/Maclib/releases/latest/download/maclib.txt"))()
+
+local Window = MacLib:Window({
+    Title = "Axel Hub",
+    Subtitle = "Made By ไอหลาม",
+    Size = UDim2.fromOffset(800, 550),
+    DragStyle = 1,
+    DisabledWindowControls = {},
+    ShowUserInfo = true,
+    Keybind = Enum.KeyCode.F,
+    AcrylicBlur = true,
+})
+
+local tabGroups = { MainGroup = Window:TabGroup() }
+local tabs = {
+    Player = tabGroups.MainGroup:Tab({ Name = "Player", Image = "rbxassetid://18821914323" }),
+    Visuals = tabGroups.MainGroup:Tab({ Name = "Visuals & World", Image = "rbxassetid://18821914323" }),
+    Misc = tabGroups.MainGroup:Tab({ Name = "Misc", Image = "rbxassetid://10734950309" }),
+    Exploits = tabGroups.MainGroup:Tab({ Name = "Exploits (VIP)", Image = "rbxassetid://18822285121" })
+}
+
+local sections = {
+    Movement = tabs.Player:Section({ Side = "Left" }),
+    Teleport = tabs.Player:Section({ Side = "Right" }),
+    ESP = tabs.Visuals:Section({ Side = "Left" }),
+    Potato = tabs.Visuals:Section({ Side = "Right" }),
+    Utility = tabs.Misc:Section({ Side = "Left" }),
+    Server = tabs.Misc:Section({ Side = "Right" }),
+    Glitch = tabs.Exploits:Section({ Side = "Left" })
+}
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local TeleportService = game:GetService("TeleportService")
+local HttpService = game:GetService("HttpService")
+local LocalPlayer = Players.LocalPlayer
+
+-- ========================================== --
+-- 1. PLAYER MOVEMENT
+-- ========================================== --
+sections.Movement:Header({ Text = "Movement Settings" })
+
+local walkSpeed = 16
+sections.Movement:Slider({
+    Name = "Player Speed",
+    Default = 16,
+    Minimum = 16,
+    Maximum = 500,
+    DisplayMethod = "Value",
+    Precision = 0,
+    Callback = function(Value)
+        walkSpeed = Value
+        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+            LocalPlayer.Character.Humanoid.WalkSpeed = walkSpeed
+        end
+    end
+}, "WalkSpeedSlider")
+
+RunService.RenderStepped:Connect(function()
+    pcall(function()
+        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+            if LocalPlayer.Character.Humanoid.WalkSpeed ~= walkSpeed and walkSpeed > 16 then
+                LocalPlayer.Character.Humanoid.WalkSpeed = walkSpeed
+            end
+        end
+    end)
+end)
+
+local flying = false
+local flySpeed = 50
+local flyConnection
+
+sections.Movement:Toggle({
+    Name = "Fly",
+    Default = false,
+    Callback = function(state)
+        flying = state
+        local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+        local root = char:WaitForChild("HumanoidRootPart")
+        local cam = workspace.CurrentCamera
+        local UIS = game:GetService("UserInputService")
+
+        if flying then
+            local bv = Instance.new("BodyVelocity")
+            local bg = Instance.new("BodyGyro")
+            bv.MaxForce = Vector3.new(9e9, 9e9, 9e9)
+            bg.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
+            bv.Velocity = Vector3.new(0, 0, 0)
+            bv.Parent = root
+            bg.Parent = root
+
+            flyConnection = RunService.RenderStepped:Connect(function()
+                if char:FindFirstChild("Humanoid") and char.Humanoid.Health > 0 then
+                    bv.Velocity =
+                        (cam.CFrame.LookVector * flySpeed * (UIS:IsKeyDown(Enum.KeyCode.W) and 1 or 0)) +
+                        (cam.CFrame.LookVector * -flySpeed * (UIS:IsKeyDown(Enum.KeyCode.S) and 1 or 0)) +
+                        (cam.CFrame.RightVector * -flySpeed * (UIS:IsKeyDown(Enum.KeyCode.A) and 1 or 0)) +
+                        (cam.CFrame.RightVector * flySpeed * (UIS:IsKeyDown(Enum.KeyCode.D) and 1 or 0))
+                    bg.CFrame = cam.CFrame
+                end
+            end)
+        else
+            if flyConnection then flyConnection:Disconnect() flyConnection = nil end
+            if root:FindFirstChild("BodyVelocity") then root.BodyVelocity:Destroy() end
+            if root:FindFirstChild("BodyGyro") then root.BodyGyro:Destroy() end
+        end
+    end,
+}, "FlyToggle")
+
+sections.Movement:Slider({
+    Name = "Fly Speed",
+    Default = 50,
+    Minimum = 10,
+    Maximum = 500,
+    DisplayMethod = "Value",
+    Precision = 0,
+    Callback = function(Value)
+        flySpeed = Value
+    end
+}, "FlySpeedSlider")
+
+local noclip = false
+sections.Movement:Toggle({
+    Name = "Noclip",
+    Default = false,
+    Callback = function(state)
+        noclip = state
+    end,
+}, "NoclipToggle")
+
+RunService.Stepped:Connect(function()
+    if noclip and LocalPlayer.Character then
+        for _, v in pairs(LocalPlayer.Character:GetDescendants()) do
+            if v:IsA("BasePart") and v.CanCollide then
+                v.CanCollide = false
+            end
+        end
+    end
+end)
+
+-- ========================================== --
+-- 2. TELEPORT 
+-- ========================================== --
+sections.Teleport:Header({ Text = "Location Manager" })
+
+local savedLocation = nil
+
+sections.Teleport:Button({
+    Name = "Save Current Position",
+    Callback = function()
+        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            savedLocation = LocalPlayer.Character.HumanoidRootPart.CFrame
+            Window:Notify({ Title = "Teleport", Description = "Position Saved!" })
+        end
+    end,
+})
+
+sections.Teleport:Button({
+    Name = "Teleport to Saved Position",
+    Callback = function()
+        if savedLocation and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            LocalPlayer.Character.HumanoidRootPart.CFrame = savedLocation
+        end
+    end,
+})
+
+-- ========================================== --
+-- 3. VISUALS & ESP
+-- ========================================== --
+sections.ESP:Header({ Text = "Player ESP" })
+
+local ESP_Enabled = false
+RunService.RenderStepped:Connect(function()
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character then
+            if ESP_Enabled then
+                if not player.Character:FindFirstChild("Axel_ESP") then
+                    local highlight = Instance.new("Highlight")
+                    highlight.Name = "Axel_ESP"
+                    highlight.FillColor = Color3.fromRGB(255, 0, 0)
+                    highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+                    highlight.FillTransparency = 0.5
+                    highlight.OutlineTransparency = 0
+                    highlight.Parent = player.Character
+                end
+            else
+                if player.Character:FindFirstChild("Axel_ESP") then
+                    player.Character.Axel_ESP:Destroy()
+                end
+            end
+        end
+    end
+end)
+
+sections.ESP:Toggle({
+    Name = "Enable ESP",
+    Default = false,
+    Callback = function(state)
+        ESP_Enabled = state
+    end,
+}, "ESPToggle")
+
+-- ========================================== --
+-- 4. OPTIMIZATION
+-- ========================================== --
+sections.Potato:Header({ Text = "Game Optimization" })
+
+local CoreGui = game:GetService("CoreGui")
+local screenOverlay = Instance.new("ScreenGui")
+screenOverlay.Name = "AxelOverlay"
+screenOverlay.Parent = CoreGui
+local overlayFrame = Instance.new("Frame", screenOverlay)
+overlayFrame.Size = UDim2.new(1, 0, 1, 0)
+overlayFrame.Visible = false
+
+sections.Potato:Toggle({
+    Name = "Black Screen",
+    Default = false,
+    Callback = function(state)
+        overlayFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+        overlayFrame.Visible = state
+    end,
+}, "BlackScreenToggle")
+
+sections.Potato:Toggle({
+    Name = "White Screen",
+    Default = false,
+    Callback = function(state)
+        overlayFrame.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+        overlayFrame.Visible = state
+    end,
+}, "WhiteScreenToggle")
+
+sections.Potato:Button({
+    Name = "Remove All Effects",
+    Callback = function()
+        for _, obj in pairs(workspace:GetDescendants()) do
+            if obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam") or obj:IsA("Fire") or obj:IsA("Smoke") or obj:IsA("Sparkles") then
+                obj.Enabled = false
+            end
+        end
+        Window:Notify({ Title = "Optimization", Description = "All effects disabled." })
+    end,
+})
+
+sections.Potato:Button({
+    Name = "Extreme Potato Mode",
+    Callback = function()
+        local Lighting = game:GetService("Lighting")
+        local Terrain = workspace:FindFirstChildOfClass("Terrain")
+        pcall(function() settings().Rendering.QualityLevel = 1 end)
+        Lighting.GlobalShadows = false
+        Lighting.FogEnd = 9e9
+        Lighting.Brightness = 1
+        
+        if Terrain then
+            pcall(function()
+                Terrain.WaterWaveSize = 0
+                Terrain.WaterWaveSpeed = 0
+                Terrain.WaterReflectance = 0
+                Terrain.WaterTransparency = 1
+                Terrain.Decoration = false
+            end)
+        end
+        
+        for _, v in pairs(workspace:GetDescendants()) do
+            if v:IsA("BasePart") then
+                v.Material = Enum.Material.SmoothPlastic
+                v.CastShadow = false
+                v.Reflectance = 0
+            elseif v:IsA("Decal") or v:IsA("Texture") or v:IsA("SurfaceAppearance") then
+                pcall(function() v:Destroy() end)
+            end
+        end
+        Window:Notify({ Title = "Optimization", Description = "Extreme Potato applied!" })
+    end,
+})
+
+-- ========================================== --
+-- 5. SYSTEM UTILITY & AUTO SUMMON (MISC TAB)
+-- ========================================== --
+sections.Utility:Header({ Text = "System Tools" })
+
+local antiAfkEnabled = false
+sections.Utility:Toggle({
+    Name = "Anti AFK",
+    Default = false,
+    Callback = function(state)
+        antiAfkEnabled = state
+        if state then
+            local VirtualUser = game:GetService("VirtualUser")
+            LocalPlayer.Idled:Connect(function()
+                if antiAfkEnabled then
+                    VirtualUser:Button2Down(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
+                    task.wait(1)
+                    VirtualUser:Button2Up(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
+                end
+            end)
+            Window:Notify({ Title = "System", Description = "Anti AFK Enabled." })
+        end
+    end,
+}, "AntiAfkToggle")
+
+local autoRejoinEnabled = false
+sections.Utility:Toggle({
+    Name = "Auto Rejoin (On Disconnect)",
+    Default = false,
+    Callback = function(state)
+        autoRejoinEnabled = state
+        if state then
+            local promptOverlay = CoreGui:WaitForChild("RobloxPromptGui"):WaitForChild("promptOverlay")
+            local function doRejoin()
+                task.wait(2)
+                if #Players:GetPlayers() <= 1 then
+                    TeleportService:Teleport(game.PlaceId, LocalPlayer)
+                else
+                    TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, LocalPlayer)
+                end
+            end
+            
+            promptOverlay.ChildAdded:Connect(function(child)
+                if autoRejoinEnabled and child.Name == "ErrorPrompt" then doRejoin() end
+            end)
+            
+            if promptOverlay:FindFirstChild("ErrorPrompt") then doRejoin() end
+            Window:Notify({ Title = "System", Description = "Auto Rejoin Active!" })
+        end
+    end,
+}, "AutoRejoinToggle")
+
+sections.Utility:Divider()
+sections.Utility:Header({ Text = "Auto Summon (Random 10-200)" })
+
+local autoSummonJujutsu = false
+sections.Utility:Toggle({
+    Name = "Auto Summon (Jujutsu)",
+    Default = false,
+    Callback = function(state)
+        autoSummonJujutsu = state
+        if autoSummonJujutsu then
+            task.spawn(function()
+                local Event = game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("RequestBannerSummon")
+                local round = 1
+                while autoSummonJujutsu do
+                    pcall(function()
+                        local randomAmount = math.random(10, 200)
+                        Event:InvokeServer("Jujutsu", randomAmount)
+                        print("[Jujutsu] Round", round, "- Summoned:", randomAmount, "times")
+                        round = round + 1
+                    end)
+                    task.wait(1)
+                end
+            end)
+            Window:Notify({ Title = "Auto Summon", Description = "Started pulling Jujutsu (10-200)!" })
+        else
+            Window:Notify({ Title = "Auto Summon", Description = "Stopped Jujutsu." })
+        end
+    end,
+}, "AutoSummonJujutsuToggle")
+
+local autoSummonSpecial = false
+sections.Utility:Toggle({
+    Name = "Auto Summon (Special)",
+    Default = false,
+    Callback = function(state)
+        autoSummonSpecial = state
+        if autoSummonSpecial then
+            task.spawn(function()
+                local Event = game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("RequestBannerSummon")
+                local round = 1
+                while autoSummonSpecial do
+                    pcall(function()
+                        local randomAmount = math.random(10, 200)
+                        Event:InvokeServer("Special", randomAmount)
+                        print("[Special] Round", round, "- Summoned:", randomAmount, "times")
+                        round = round + 1
+                    end)
+                    task.wait(1)
+                end
+            end)
+            Window:Notify({ Title = "Auto Summon", Description = "Started pulling Special (10-200)!" })
+        else
+            Window:Notify({ Title = "Auto Summon", Description = "Stopped Special." })
+        end
+    end,
+}, "AutoSummonSpecialToggle")
+
+-- ========================================== --
+-- 6. EXPLOITS & GLITCHES (VIP TAB)
+-- ========================================== --
+sections.Glitch:Header({ Text = "Money & Currency Exploits" })
+sections.Glitch:Label({ Text = "Warning: Use at your own risk!" })
+
+sections.Glitch:Button({
+    Name = "Infinite Special Banner (0/0 Glitch)",
+    Callback = function()
+        pcall(function()
+            local args = { "Special", 0/0 }
+            game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("RequestBannerSummon"):InvokeServer(unpack(args))
+        end)
+        Window:Notify({ Title = "Glitch Activated", Description = "NaN Glitch sent to Special banner!" })
+    end,
+})
+
+sections.Glitch:Button({
+    Name = "Infinite Jujutsu Banner (0/0 Glitch)",
+    Callback = function()
+        pcall(function()
+            local args = { "Jujutsu", 0/0 }
+            game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("RequestBannerSummon"):InvokeServer(unpack(args))
+        end)
+        Window:Notify({ Title = "Glitch Activated", Description = "NaN Glitch sent to Jujutsu banner!" })
+    end,
+})
+
+-- ========================================== --
+-- 7. SERVER MANAGEMENT
+-- ========================================== --
+sections.Server:Header({ Text = "Quick Actions" })
+
+sections.Server:Button({
+    Name = "Server Hop (Random)",
+    Callback = function()
+        Window:Notify({ Title = "Server", Description = "Finding new server..." })
+        local requestFunc = request or http_request or (syn and syn.request) or (fluxus and fluxus.request)
+        if requestFunc then
+            pcall(function()
+                local res = requestFunc({
+                    Url = string.format("https://games.roblox.com/v1/games/%d/servers/Public?sortOrder=Asc&limit=100", game.PlaceId),
+                    Method = "GET"
+                })
+                if res and res.Body then
+                    local data = HttpService:JSONDecode(res.Body)
+                    if data and data.data then
+                        local servers = {}
+                        for _, v in pairs(data.data) do
+                            if type(v) == "table" and v.playing < v.maxPlayers and v.id ~= game.JobId then
+                                table.insert(servers, v.id)
+                            end
+                        end
+                        if #servers > 0 then
+                            local randomServer = servers[math.random(1, #servers)]
+                            TeleportService:TeleportToPlaceInstance(game.PlaceId, randomServer, LocalPlayer)
+                        else
+                            TeleportService:Teleport(game.PlaceId, LocalPlayer)
+                        end
+                    end
+                end
+            end)
+        else
+            TeleportService:Teleport(game.PlaceId, LocalPlayer)
+        end
+    end,
+})
+
+sections.Server:Button({
+    Name = "Instant Rejoin",
+    Callback = function()
+        Window:Notify({ Title = "Server", Description = "Rejoining server..." })
+        task.wait(0.5)
+        if #Players:GetPlayers() <= 1 then
+            TeleportService:Teleport(game.PlaceId, LocalPlayer)
+        else
+            TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, LocalPlayer)
+        end
+    end,
+})
+
+sections.Server:Divider()
+sections.Server:Header({ Text = "Copy Data" })
+
+sections.Server:Button({
+    Name = "Copy Place ID",
+    Callback = function()
+        if setclipboard then
+            setclipboard(tostring(game.PlaceId))
+            Window:Notify({ Title = "Server", Description = "Place ID Copied!" })
+        else
+            Window:Notify({ Title = "Error", Description = "Your executor doesn't support clipboard." })
+        end
+    end,
+})
+
+sections.Server:Button({
+    Name = "Copy Job ID",
+    Callback = function()
+        if setclipboard then
+            setclipboard(tostring(game.JobId))
+            Window:Notify({ Title = "Server", Description = "Job ID Copied!" })
+        else
+            Window:Notify({ Title = "Error", Description = "Your executor doesn't support clipboard." })
+        end
+    end,
+})
+
+tabs.Player:Select()
+
+-- ========================================== --
+-- MOBILE FLOATING TOGGLE BUTTON (Custom Icon)
+-- ========================================== --
+local UserInputService = game:GetService("UserInputService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+
+local existingToggle = CoreGui:FindFirstChild("AxelMobileToggle")
+if existingToggle then existingToggle:Destroy() end
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "AxelMobileToggle"
+ScreenGui.Parent = CoreGui
+
+local ToggleBtn = Instance.new("ImageButton")
+ToggleBtn.Name = "ToggleIcon"
+ToggleBtn.Parent = ScreenGui
+ToggleBtn.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+ToggleBtn.Position = UDim2.new(0.5, -25, 0.05, 0)
+ToggleBtn.Size = UDim2.new(0, 50, 0, 50)
+ToggleBtn.AutoButtonColor = true
+
+-- Updated Icon ID
+ToggleBtn.Image = "rbxassetid://86949082023913" 
+
+local UICorner = Instance.new("UICorner")
+UICorner.CornerRadius = UDim.new(0.5, 0)
+UICorner.Parent = ToggleBtn
+
+local UIStroke = Instance.new("UIStroke")
+UIStroke.Color = Color3.fromRGB(0, 150, 255)
+UIStroke.Thickness = 2
+UIStroke.Transparency = 0.2
+UIStroke.Parent = ToggleBtn
+
+local isDragging = false
+local startPos = nil
+local dragStart = nil
+
+ToggleBtn.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+        isDragging = true
+        startPos = input.Position
+        dragStart = ToggleBtn.Position
+    end
+end)
+
+ToggleBtn.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+        isDragging = false
+        if startPos and (input.Position - startPos).Magnitude < 10 then
+            VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.F, false, game)
+            task.wait(0.05)
+            VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.F, false, game)
+        end
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if isDragging and (input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement) then
+        local delta = input.Position - startPos
+        ToggleBtn.Position = UDim2.new(
+            dragStart.X.Scale, dragStart.X.Offset + delta.X,
+            dragStart.Y.Scale, dragStart.Y.Offset + delta.Y
+        )
+    end
+end)

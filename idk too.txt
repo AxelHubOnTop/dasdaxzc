@@ -1,0 +1,7 @@
+for i,v in pairs(getgc(true)) do
+    if type(v) == "table" and rawget(v,"Inventory") and rawget(v.Inventory,"Units") then
+        for uid, unitData in pairs(v.Inventory.Units) do
+            print(uid, unitData.Name)
+        end
+    end
+end

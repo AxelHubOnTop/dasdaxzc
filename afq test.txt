@@ -1,0 +1,7 @@
+if isfolder("AxelHub/AxelConfig") then
+for i,v in pairs(listfiles("AxelHub/AxelConfig")) do
+print(v)
+end
+else
+    makefolder("AxelHub/AxelConfig")
+end

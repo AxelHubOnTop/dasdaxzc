@@ -1,0 +1,64 @@
+-- Internal UI Executor (Study Lesson)
+
+local Players = game:GetService("Players")
+local player = Players.LocalPlayer
+local gui = Instance.new("ScreenGui")
+gui.Name = "InternalExecutor"
+gui.Parent = player:WaitForChild("PlayerGui")
+
+-- Main Frame
+local frame = Instance.new("Frame")
+frame.Parent = gui
+frame.Size = UDim2.new(0, 400, 0, 250)
+frame.Position = UDim2.new(0.5, -200, 0.5, -125)
+frame.BackgroundColor3 = Color3.fromRGB(30,30,30)
+frame.BorderSizePixel = 0
+
+-- Script Box
+local textbox = Instance.new("TextBox")
+textbox.Parent = frame
+textbox.Size = UDim2.new(1, -20, 0, 150)
+textbox.Position = UDim2.new(0, 10, 0, 10)
+textbox.BackgroundColor3 = Color3.fromRGB(40,40,40)
+textbox.TextColor3 = Color3.fromRGB(255,255,255)
+textbox.TextXAlignment = Enum.TextXAlignment.Left
+textbox.TextYAlignment = Enum.TextYAlignment.Top
+textbox.TextWrapped = false
+textbox.ClearTextOnFocus = false
+textbox.MultiLine = true
+textbox.Text = "-- put script here"
+
+-- Execute Button
+local execute = Instance.new("TextButton")
+execute.Parent = frame
+execute.Size = UDim2.new(0.5, -15, 0, 40)
+execute.Position = UDim2.new(0, 10, 1, -50)
+execute.Text = "Execute"
+execute.BackgroundColor3 = Color3.fromRGB(60,120,60)
+execute.TextColor3 = Color3.new(1,1,1)
+
+-- Clear Button
+local clear = Instance.new("TextButton")
+clear.Parent = frame
+clear.Size = UDim2.new(0.5, -15, 0, 40)
+clear.Position = UDim2.new(0.5, 5, 1, -50)
+clear.Text = "Clear"
+clear.BackgroundColor3 = Color3.fromRGB(120,60,60)
+clear.TextColor3 = Color3.new(1,1,1)
+
+-- Execute Script
+execute.MouseButton1Click:Connect(function()
+    local src = textbox.Text
+    local func, err = loadstring(src)
+
+    if func then
+        pcall(func)
+    else
+        warn(err)
+    end
+end)
+
+-- Clear Text
+clear.MouseButton1Click:Connect(function()
+    textbox.Text = ""
+end)

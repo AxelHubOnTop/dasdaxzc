@@ -1,0 +1,7 @@
+ทำให้มันเป็น loadstring หลักแล้วพอรัน ให้มันเช็คแมพ เสร็จแล้วเข้า loadstring ของ keysystem แมพนั้นๆ
+
+placeid = game
+
+if placeid then
+loadstring(ที่ใช้คีย์ของแมพนั้น)
+end

@@ -1,0 +1,29 @@
+local buf = buffer.fromstring("\001\001$\000fc98d3cc-92f5-450b-934b-1d17e43cdd6a\155\015\136B\0014\158B-M#\196\000\000\000\000\000\000\000\000\000\000\000\000")
+
+newX = game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame.X
+newY = game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame.Y
+newZ = game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame.Z
+buffer.writef32(buf, 40, newX)
+buffer.writef32(buf, 44, newY)
+buffer.writef32(buf, 48, newZ)
+
+local args = {
+	buf,
+	{}
+}
+game:GetService("ReplicatedStorage"):WaitForChild("sync"):WaitForChild("sync_RELIABLE"):FireServer(unpack(args))
+
+webhookneed = {"Wood","Epic Chest"}
+
+for i,v in pairs(game:GetService("Players").LocalPlayer.PlayerGui.NotificationUI.NotificationsFrame:GetChildren()) do
+    if v.Name == "ActiveNotification" and v:FindFirstChild("Holder") then
+        if v.Holder.AutoSizeHolde:FindFirstChild("Txt") and v.Holder.AutoSizeHolde:FindFirstChild("Earnt") then
+            for i2,v2 in pairs(webhookneed) do
+            if string.find(v.Holder.AutoSizeHolde.Earnt.Text, v2) then
+            print(v.Holder.AutoSizeHolde.Txt.Text.." : "..v.Holder.AutoSizeHolde.Earnt.Text)
+            v.Name = "Actived"
+        end
+            end
+        end
+    end
+end

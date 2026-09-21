@@ -1,0 +1,52 @@
+local player = game.Players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+local rootPart = character:WaitForChild("HumanoidRootPart")
+
+local function GetNearestNPC()
+    local nearestNPC = nil
+    local nearestDistance = math.huge
+
+    for _, v in pairs(workspace.NPCs:GetChildren()) do
+        if v:FindFirstChild("HumanoidRootPart") and v.Humanoid.Health >= 1 then
+            local distance = (v.HumanoidRootPart.Position - rootPart.Position).Magnitude
+
+            if distance < nearestDistance then
+                nearestDistance = distance
+                nearestNPC = v
+            end
+        end
+    end
+
+    return nearestNPC, nearestDistance
+end
+
+-- ใช้งาน
+task.spawn(function()
+pcall(function()
+    while wait() do
+        local npc, distance = GetNearestNPC()
+if npc then
+    _G.Position = npc.HumanoidRootPart.Position
+    print("NPC ใกล้สุด:", npc.Name, "| ระยะ:", distance)
+end
+    end
+end) 
+end)
+
+
+local gg = getrawmetatable(game)
+local old = gg.namecall
+setreadonly(gg,false)
+gg.namecall = newcclosure(function(...)
+    local method = getnamecallmethod()
+    local args = {...}
+    if tostring(method) == "FireServer" then
+        if tostring(args[1]) == "RequestHit" then
+            if _G.Enable then
+            args[2] = _G.Position
+            return old(unpack(args))
+            end
+        end
+    end
+    return old(...)
+end)

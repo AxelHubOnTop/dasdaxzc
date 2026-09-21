@@ -1,0 +1,434 @@
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+
+local CONFIG = {
+    MaxLogs      = 100,
+    TruncateLen  = 300,
+    GuiTitle     = "Loadstring Logger",
+    AccentColor  = Color3.fromRGB(88, 101, 242),
+    BgColor      = Color3.fromRGB(24, 25, 28),
+    SurfaceColor = Color3.fromRGB(32, 34, 37),
+    TextColor    = Color3.fromRGB(220, 221, 222),
+    MutedColor   = Color3.fromRGB(114, 118, 125),
+    SuccessColor = Color3.fromRGB(87, 242, 135),
+    WarnColor    = Color3.fromRGB(254, 231, 92),
+}
+
+
+local logs = {}
+local logCount = 0
+local isMinimized = false
+local isDragging = false
+local dragStart, startPos
+
+
+local originalLoadstring = loadstring
+local totalCaught = 0
+
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "LoadstringLogger"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.DisplayOrder = 999
+
+if syn and syn.protect_gui then
+    syn.protect_gui(ScreenGui)
+    ScreenGui.Parent = game.CoreGui
+elseif gethui then
+    ScreenGui.Parent = gethui()
+else
+    ScreenGui.Parent = game.CoreGui
+end
+
+
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "MainFrame"
+MainFrame.Size = UDim2.new(0, 500, 0, 380)
+MainFrame.Position = UDim2.new(0.5, -250, 0.5, -190)
+MainFrame.BackgroundColor3 = CONFIG.BgColor
+MainFrame.BorderSizePixel = 0
+MainFrame.Parent = ScreenGui
+Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 8)
+
+
+local mainStroke = Instance.new("UIStroke")
+mainStroke.Color = Color3.fromRGB(50, 52, 58)
+mainStroke.Thickness = 1
+mainStroke.Parent = MainFrame
+
+
+local TitleBar = Instance.new("Frame")
+TitleBar.Name = "TitleBar"
+TitleBar.Size = UDim2.new(1, 0, 0, 36)
+TitleBar.BackgroundColor3 = CONFIG.SurfaceColor
+TitleBar.BorderSizePixel = 0
+TitleBar.Parent = MainFrame
+Instance.new("UICorner", TitleBar).CornerRadius = UDim.new(0, 8)
+
+
+local titleFix = Instance.new("Frame")
+titleFix.Size = UDim2.new(1, 0, 0.5, 0)
+titleFix.Position = UDim2.new(0, 0, 0.5, 0)
+titleFix.BackgroundColor3 = CONFIG.SurfaceColor
+titleFix.BorderSizePixel = 0
+titleFix.Parent = TitleBar
+
+local AccentBar = Instance.new("Frame")
+AccentBar.Size = UDim2.new(0, 3, 1, 0)
+AccentBar.BackgroundColor3 = CONFIG.AccentColor
+AccentBar.BorderSizePixel = 0
+AccentBar.Parent = TitleBar
+
+
+local TitleLabel = Instance.new("TextLabel")
+TitleLabel.Size = UDim2.new(1, -120, 1, 0)
+TitleLabel.Position = UDim2.new(0, 14, 0, 0)
+TitleLabel.BackgroundTransparency = 1
+TitleLabel.Font = Enum.Font.GothamBold
+TitleLabel.Text = "\u{25CF} " .. CONFIG.GuiTitle
+TitleLabel.TextColor3 = CONFIG.TextColor
+TitleLabel.TextSize = 13
+TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+TitleLabel.Parent = TitleBar
+
+
+local CountBadge = Instance.new("TextLabel")
+CountBadge.Size = UDim2.new(0, 60, 0, 20)
+CountBadge.Position = UDim2.new(1, -130, 0.5, -10)
+CountBadge.BackgroundColor3 = CONFIG.AccentColor
+CountBadge.Font = Enum.Font.GothamBold
+CountBadge.Text = "0 caught"
+CountBadge.TextColor3 = Color3.fromRGB(255, 255, 255)
+CountBadge.TextSize = 11
+CountBadge.Parent = TitleBar
+Instance.new("UICorner", CountBadge).CornerRadius = UDim.new(0, 4)
+
+
+local MinBtn = Instance.new("TextButton")
+MinBtn.Size = UDim2.new(0, 28, 0, 28)
+MinBtn.Position = UDim2.new(1, -62, 0.5, -14)
+MinBtn.BackgroundColor3 = Color3.fromRGB(50, 52, 58)
+MinBtn.Font = Enum.Font.GothamBold
+MinBtn.Text = "–"
+MinBtn.TextColor3 = CONFIG.TextColor
+MinBtn.TextSize = 14
+MinBtn.Parent = TitleBar
+Instance.new("UICorner", MinBtn).CornerRadius = UDim.new(0, 4)
+
+
+local CloseBtn = Instance.new("TextButton")
+CloseBtn.Size = UDim2.new(0, 28, 0, 28)
+CloseBtn.Position = UDim2.new(1, -30, 0.5, -14)
+CloseBtn.BackgroundColor3 = Color3.fromRGB(237, 66, 69)
+CloseBtn.Font = Enum.Font.GothamBold
+CloseBtn.Text = "✕"
+CloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+CloseBtn.TextSize = 12
+CloseBtn.Parent = TitleBar
+Instance.new("UICorner", CloseBtn).CornerRadius = UDim.new(0, 4)
+
+
+local Body = Instance.new("Frame")
+Body.Name = "Body"
+Body.Size = UDim2.new(1, 0, 1, -36)
+Body.Position = UDim2.new(0, 0, 0, 36)
+Body.BackgroundTransparency = 1
+Body.Parent = MainFrame
+
+
+local Toolbar = Instance.new("Frame")
+Toolbar.Size = UDim2.new(1, 0, 0, 36)
+Toolbar.BackgroundColor3 = CONFIG.SurfaceColor
+Toolbar.BorderSizePixel = 0
+Toolbar.Parent = Body
+
+local toolPad = Instance.new("UIPadding")
+toolPad.PaddingLeft = UDim.new(0, 8)
+toolPad.PaddingRight = UDim.new(0, 8)
+toolPad.Parent = Toolbar
+
+local toolLayout = Instance.new("UIListLayout")
+toolLayout.FillDirection = Enum.FillDirection.Horizontal
+toolLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+toolLayout.Padding = UDim.new(0, 6)
+toolLayout.Parent = Toolbar
+
+local function makeToolBtn(label, color)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0, 80, 0, 24)
+    btn.BackgroundColor3 = color or Color3.fromRGB(50, 52, 58)
+    btn.Font = Enum.Font.Gotham
+    btn.Text = label
+    btn.TextColor3 = CONFIG.TextColor
+    btn.TextSize = 12
+    btn.BorderSizePixel = 0
+    btn.Parent = Toolbar
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 4)
+    return btn
+end
+
+local ClearBtn = makeToolBtn("🗑 Clear", Color3.fromRGB(237, 66, 69))
+local CopyAllBtn = makeToolBtn("📋 Copy All", nil)
+local ToggleBtn = makeToolBtn("⏸ Pause", CONFIG.AccentColor)
+
+
+local StatusLabel = Instance.new("TextLabel")
+StatusLabel.Size = UDim2.new(1, -270, 1, 0)
+StatusLabel.BackgroundTransparency = 1
+StatusLabel.Font = Enum.Font.Gotham
+StatusLabel.Text = "● Listening..."
+StatusLabel.TextColor3 = CONFIG.SuccessColor
+StatusLabel.TextSize = 12
+StatusLabel.TextXAlignment = Enum.TextXAlignment.Right
+StatusLabel.Parent = Toolbar
+
+
+local ScrollFrame = Instance.new("ScrollingFrame")
+ScrollFrame.Size = UDim2.new(1, 0, 1, -36)
+ScrollFrame.Position = UDim2.new(0, 0, 0, 36)
+ScrollFrame.BackgroundTransparency = 1
+ScrollFrame.BorderSizePixel = 0
+ScrollFrame.ScrollBarThickness = 4
+ScrollFrame.ScrollBarImageColor3 = CONFIG.AccentColor
+ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+ScrollFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+ScrollFrame.Parent = Body
+
+local logLayout = Instance.new("UIListLayout")
+logLayout.Padding = UDim.new(0, 1)
+logLayout.SortOrder = Enum.SortOrder.LayoutOrder
+logLayout.Parent = ScrollFrame
+
+local logPad = Instance.new("UIPadding")
+logPad.PaddingLeft = UDim.new(0, 6)
+logPad.PaddingRight = UDim.new(0, 10)
+logPad.PaddingTop = UDim.new(0, 4)
+logPad.PaddingBottom = UDim.new(0, 4)
+logPad.Parent = ScrollFrame
+
+
+local startTime = os.clock()
+local function getTimestamp()
+    local elapsed = os.clock() - startTime
+    return string.format("[%06.2fs]", elapsed)
+end
+
+local function truncate(str, len)
+    str = tostring(str)
+    if #str > len then
+        return str:sub(1, len) .. "... [+" .. (#str - len) .. " chars]"
+    end
+    return str
+end
+
+
+local isPaused = false
+local function addLog(source, chunk)
+    if isPaused then return end
+    totalCaught += 1
+    logCount += 1
+
+    CountBadge.Text = totalCaught .. " caught"
+
+    if logCount > CONFIG.MaxLogs then
+        local first = ScrollFrame:FindFirstChildOfClass("Frame")
+        if first then first:Destroy() end
+        logCount -= 1
+    end
+
+    local entry = Instance.new("Frame")
+    entry.Size = UDim2.new(1, 0, 0, 0)
+    entry.AutomaticSize = Enum.AutomaticSize.Y
+    entry.BackgroundColor3 = (totalCaught % 2 == 0)
+        and Color3.fromRGB(28, 29, 33)
+        or  Color3.fromRGB(32, 34, 37)
+    entry.BorderSizePixel = 0
+    entry.LayoutOrder = totalCaught
+    entry.Parent = ScrollFrame
+
+    local entryPad = Instance.new("UIPadding")
+    entryPad.PaddingLeft  = UDim.new(0, 8)
+    entryPad.PaddingRight = UDim.new(0, 8)
+    entryPad.PaddingTop   = UDim.new(0, 6)
+    entryPad.PaddingBottom= UDim.new(0, 6)
+    entryPad.Parent = entry
+
+
+    local header = Instance.new("Frame")
+    header.Size = UDim2.new(1, 0, 0, 16)
+    header.BackgroundTransparency = 1
+    header.Parent = entry
+
+    local numLabel = Instance.new("TextLabel")
+    numLabel.Size = UDim2.new(0, 30, 1, 0)
+    numLabel.BackgroundTransparency = 1
+    numLabel.Font = Enum.Font.GothamBold
+    numLabel.Text = "#" .. totalCaught
+    numLabel.TextColor3 = CONFIG.AccentColor
+    numLabel.TextSize = 11
+    numLabel.TextXAlignment = Enum.TextXAlignment.Left
+    numLabel.Parent = header
+
+    local tsLabel = Instance.new("TextLabel")
+    tsLabel.Size = UDim2.new(0, 90, 1, 0)
+    tsLabel.Position = UDim2.new(0, 34, 0, 0)
+    tsLabel.BackgroundTransparency = 1
+    tsLabel.Font = Enum.Font.Code
+    tsLabel.Text = getTimestamp()
+    tsLabel.TextColor3 = CONFIG.WarnColor
+    tsLabel.TextSize = 11
+    tsLabel.TextXAlignment = Enum.TextXAlignment.Left
+    tsLabel.Parent = header
+
+    local srcLabel = Instance.new("TextLabel")
+    srcLabel.Size = UDim2.new(1, -130, 1, 0)
+    srcLabel.Position = UDim2.new(0, 130, 0, 0)
+    srcLabel.BackgroundTransparency = 1
+    srcLabel.Font = Enum.Font.Gotham
+    srcLabel.Text = "src: " .. tostring(source or "unknown")
+    srcLabel.TextColor3 = CONFIG.MutedColor
+    srcLabel.TextSize = 11
+    srcLabel.TextXAlignment = Enum.TextXAlignment.Right
+    srcLabel.Parent = header
+
+
+    local content = Instance.new("TextLabel")
+    content.Size = UDim2.new(1, 0, 0, 0)
+    content.Position = UDim2.new(0, 0, 0, 20)
+    content.AutomaticSize = Enum.AutomaticSize.Y
+    content.BackgroundTransparency = 1
+    content.Font = Enum.Font.Code
+    content.Text = truncate(chunk, CONFIG.TruncateLen)
+    content.TextColor3 = CONFIG.TextColor
+    content.TextSize = 11
+    content.TextXAlignment = Enum.TextXAlignment.Left
+    content.TextWrapped = true
+    content.Parent = entry
+
+
+    local copyBtn = Instance.new("TextButton")
+    copyBtn.Size = UDim2.new(0, 50, 0, 16)
+    copyBtn.Position = UDim2.new(1, -50, 0, 0)
+    copyBtn.BackgroundColor3 = Color3.fromRGB(50, 52, 58)
+    copyBtn.Font = Enum.Font.Gotham
+    copyBtn.Text = "copy"
+    copyBtn.TextColor3 = CONFIG.MutedColor
+    copyBtn.TextSize = 10
+    copyBtn.Parent = header
+    Instance.new("UICorner", copyBtn).CornerRadius = UDim.new(0, 3)
+
+    copyBtn.MouseButton1Click:Connect(function()
+        if setclipboard then
+            setclipboard(chunk)
+            copyBtn.Text = "✓"
+            copyBtn.TextColor3 = CONFIG.SuccessColor
+            task.delay(1.5, function()
+                if copyBtn.Parent then
+                    copyBtn.Text = "copy"
+                    copyBtn.TextColor3 = CONFIG.MutedColor
+                end
+            end)
+        end
+    end)
+
+
+    task.defer(function()
+        ScrollFrame.CanvasPosition = Vector2.new(0, math.huge)
+    end)
+
+    table.insert(logs, {
+        index = totalCaught,
+        timestamp = getTimestamp(),
+        source = source,
+        chunk = chunk
+    })
+end
+
+
+getgenv().loadstring = function(chunk, chunkName)
+    addLog(chunkName or "loadstring", chunk)
+    return originalLoadstring(chunk, chunkName)
+end
+
+
+ClearBtn.MouseButton1Click:Connect(function()
+    for _, v in ipairs(ScrollFrame:GetChildren()) do
+        if v:IsA("Frame") then v:Destroy() end
+    end
+    logs = {}
+    logCount = 0
+    totalCaught = 0
+    CountBadge.Text = "0 caught"
+end)
+
+CopyAllBtn.MouseButton1Click:Connect(function()
+    if setclipboard then
+        local out = {}
+        for _, log in ipairs(logs) do
+            table.insert(out, string.format("%s #%d [%s]\n%s\n", log.timestamp, log.index, tostring(log.source), log.chunk))
+        end
+        setclipboard(table.concat(out, "\n---\n"))
+        CopyAllBtn.Text = "✓ Copied"
+        task.delay(1.5, function()
+            CopyAllBtn.Text = "📋 Copy All"
+        end)
+    end
+end)
+
+ToggleBtn.MouseButton1Click:Connect(function()
+    isPaused = not isPaused
+    if isPaused then
+        ToggleBtn.Text = "▶ Resume"
+        StatusLabel.Text = "● Paused"
+        StatusLabel.TextColor3 = CONFIG.WarnColor
+    else
+        ToggleBtn.Text = "⏸ Pause"
+        StatusLabel.Text = "● Listening..."
+        StatusLabel.TextColor3 = CONFIG.SuccessColor
+    end
+end)
+
+MinBtn.MouseButton1Click:Connect(function()
+    isMinimized = not isMinimized
+    Body.Visible = not isMinimized
+    MainFrame.Size = isMinimized
+        and UDim2.new(0, 500, 0, 36)
+        or  UDim2.new(0, 500, 0, 380)
+    MinBtn.Text = isMinimized and "+" or "–"
+end)
+
+CloseBtn.MouseButton1Click:Connect(function()
+    ScreenGui:Destroy()
+    getgenv().loadstring = originalLoadstring
+end)
+
+
+TitleBar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        isDragging = true
+        dragStart = input.Position
+        startPos = MainFrame.Position
+    end
+end)
+
+TitleBar.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        isDragging = false
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if isDragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+        local delta = input.Position - dragStart
+        MainFrame.Position = UDim2.new(
+            startPos.X.Scale, startPos.X.Offset + delta.X,
+            startPos.Y.Scale, startPos.Y.Offset + delta.Y
+        )
+    end
+end)
+
+print("[LoadstringLogger] Hooked successfully. Listening for loadstring calls...")
